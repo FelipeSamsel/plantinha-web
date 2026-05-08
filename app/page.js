@@ -15,9 +15,9 @@ export default function FeedPage() {
   }, [])
 
   async function loadPosts() {
-    const { data } = await supabase
+const { data } = await supabase
       .from('posts')
-      .select('*, profiles(username), post_likes(id, user_id), post_tags(tag)')
+      .select('*, profiles(username), post_likes(id, user_id, profiles(username)), post_tags(tag)')
       .order('created_at', { ascending: false })
       .limit(30)
     if (data) setPosts(data)
