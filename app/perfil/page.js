@@ -1,6 +1,58 @@
 'use client'
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { supabase } from '../../lib/supabase'
+
+function PhotoCell({ post }) {
+  const [textColor, setTextColor] = useState('#fff')
+  const imgRef = useRef(null)
+  const likeCount = post.post_likes?.length ?? 0
+
+  function analyzeImage(img) {
+    try {
+      const canvas = document.createElement('canvas')
+      const size = 40
+      canvas.width = size
+      canvas.height = size
+      const ctx = canvas.getContext('2d')
+      ctx.drawImage(img, img.width - size, img.height - size, size, size, 0, 0, size, size)
+      const data = ctx.getImageData(0, 0, size, size).data
+      let brightness = 0
+      for (let i = 0; i < data.length; i += 4) {
+        brightness += (data[i] * 299 + data[i+1] * 587 + data[i+2] * 114) / 1000
+      }
+      brightness /= (data.length / 4)
+      setTextColor(brightness > 128 ? '#1a1a1a' : '#ffffff')
+    } catch {
+      setTextColor('#ffffff')
+    }
+  }
+
+  return (
+    <div style={{ aspectRatio: '1', borderRadius: 12, background: '#EAF3DE', overflow: 'hidden', position: 'relative' }}>
+      {post.image_url ? (
+        <>
+          <img
+            ref={imgRef}
+            src={post.image_url}
+            alt=""
+            crossOrigin="anonymous"
+            onLoad={e => analyzeImage(e.target)}
+            style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+          />
+          {likeCount > 0 && (
+            <div style={{ position: 'absolute', bottom: 6, right: 8, display: 'flex', alignItems: 'center', gap: 3 }}>
+              <span style={{ fontSize: 11, color: textColor, fontWeight: 500, textShadow: textColor === '#fff' ? '0 1px 3px rgba(0,0,0,0.5)' : '0 1px 3px rgba(255,255,255,0.5)' }}>
+                ♥ {likeCount}
+              </span>
+            </div>
+          )}
+        </>
+      ) : (
+        <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 28 }}>🌿</div>
+      )}
+    </div>
+  )
+}
 
 export default function PerfilPage() {
   const [user, setUser] = useState(null)
@@ -83,15 +135,10 @@ export default function PerfilPage() {
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6 }}>
-        {posts.map(post => (
-          <div key={post.id} style={{ aspectRatio: '1', borderRadius: 12, background: '#EAF3DE', overflow: 'hidden' }}>
-            {post.image_url
-              ? <img src={post.image_url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-              : <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 28 }}>🌿</div>
-            }
-          </div>
-        ))}
-        {posts.length === 0 && <p style={{ gridColumn: '1/-1', textAlign: 'center', color: '#888', fontSize: 13, marginTop: 20 }}>Nenhum post ainda 🌱</p>}
+        {posts.map(post => <PhotoCell key={post.id} post={post} />)}
+        {posts.length === 0 && (
+          <p style={{ gridColumn: '1/-1', textAlign: 'center', color: '#888', fontSize: 13, marginTop: 20 }}>Nenhum post ainda 🌱</p>
+        )}
       </div>
     </div>
   )
