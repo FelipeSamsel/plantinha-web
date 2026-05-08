@@ -2,9 +2,74 @@
 import { useEffect, useState, useRef } from 'react'
 import { supabase } from '../../lib/supabase'
 
-function PhotoCell({ post }) {
+function Lightbox({ post, onClose }) {
+  return (
+    <div onClick={onClose} style={{
+      position: 'fixed', inset: 0, zIndex: 1000,
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      cursor: 'zoom-out', padding: 20
+    }}>
+      {/* fundo desfocado com a própria imagem */}
+      <div style={{
+        position: 'absolute', inset: 0, overflow: 'hidden'
+      }}>
+        <img src={post.image_url} alt="" style={{
+          width: '100%', height: '100%', objectFit: 'cover',
+          filter: 'blur(24px) brightness(0.4) saturate(1.8)',
+          transform: 'scale(1.1)'
+        }} />
+      </div>
+
+      {/* gradiente verde sutil por cima */}
+      <div style={{
+        position: 'absolute', inset: 0,
+        background: 'linear-gradient(135deg, rgba(39,80,10,0.35) 0%, rgba(15,110,86,0.25) 100%)'
+      }} />
+
+      {/* card da foto */}
+      <div onClick={e => e.stopPropagation()} style={{
+        position: 'relative', zIndex: 2,
+        display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 14,
+        width: '100%', maxWidth: 340
+      }}>
+        <img src={post.image_url} alt="foto ampliada" style={{
+          width: '100%', borderRadius: 20,
+          boxShadow: '0 24px 60px rgba(0,0,0,0.5)',
+          objectFit: 'contain', maxHeight: '65vh', display: 'block'
+        }} />
+
+        {/* info abaixo da foto */}
+        <div style={{
+          background: 'rgba(255,255,255,0.12)',
+          backdropFilter: 'blur(12px)',
+          borderRadius: 14, padding: '10px 16px',
+          width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between'
+        }}>
+          <span style={{ fontSize: 13, color: '#fff', fontWeight: 500 }}>
+            {post.caption || ''}
+          </span>
+          <span style={{ fontSize: 13, color: '#C0DD97', fontWeight: 500, display: 'flex', alignItems: 'center', gap: 4 }}>
+            ♥ {post.post_likes?.length ?? 0}
+          </span>
+        </div>
+      </div>
+
+      {/* botão fechar */}
+      <button onClick={onClose} style={{
+        position: 'fixed', top: 16, right: 16, zIndex: 3,
+        background: 'rgba(255,255,255,0.15)',
+        backdropFilter: 'blur(8px)',
+        border: '0.5px solid rgba(255,255,255,0.25)',
+        color: '#fff', width: 36, height: 36, borderRadius: '50%',
+        fontSize: 16, cursor: 'pointer',
+        display: 'flex', alignItems: 'center', justifyContent: 'center'
+      }}>✕</button>
+    </div>
+  )
+}
+
+function PhotoCell({ post, onClick }) {
   const [textColor, setTextColor] = useState('#fff')
-  const imgRef = useRef(null)
   const likeCount = post.post_likes?.length ?? 0
 
   function analyzeImage(img) {
@@ -28,11 +93,10 @@ function PhotoCell({ post }) {
   }
 
   return (
-    <div style={{ aspectRatio: '1', borderRadius: 12, background: '#EAF3DE', overflow: 'hidden', position: 'relative' }}>
+    <div onClick={() => onClick(post)} style={{ aspectRatio: '1', borderRadius: 12, background: '#EAF3DE', overflow: 'hidden', position: 'relative', cursor: 'zoom-in' }}>
       {post.image_url ? (
         <>
           <img
-            ref={imgRef}
             src={post.image_url}
             alt=""
             crossOrigin="anonymous"
@@ -40,11 +104,13 @@ function PhotoCell({ post }) {
             style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
           />
           {likeCount > 0 && (
-            <div style={{ position: 'absolute', bottom: 6, right: 8, display: 'flex', alignItems: 'center', gap: 3 }}>
-              <span style={{ fontSize: 11, color: textColor, fontWeight: 500, textShadow: textColor === '#fff' ? '0 1px 3px rgba(0,0,0,0.5)' : '0 1px 3px rgba(255,255,255,0.5)' }}>
-                ♥ {likeCount}
-              </span>
-            </div>
+            <span style={{
+              position: 'absolute', bottom: 6, right: 8,
+              fontSize: 11, color: textColor, fontWeight: 500,
+              textShadow: textColor === '#fff' ? '0 1px 3px rgba(0,0,0,0.5)' : '0 1px 3px rgba(255,255,255,0.5)'
+            }}>
+              ♥ {likeCount}
+            </span>
           )}
         </>
       ) : (
@@ -62,6 +128,7 @@ export default function PerfilPage() {
   const [editing, setEditing] = useState(false)
   const [username, setUsername] = useState('')
   const [bio, setBio] = useState('')
+  const [selected, setSelected] = useState(null)
 
   useEffect(() => { load() }, [])
 
@@ -102,6 +169,8 @@ export default function PerfilPage() {
 
   return (
     <div>
+      {selected && <Lightbox post={selected} onClose={() => setSelected(null)} />}
+
       <div style={{ textAlign: 'center', marginBottom: 32 }}>
         <div style={{ width: 80, height: 80, borderRadius: '50%', background: '#EAF3DE', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 28, fontWeight: 500, color: '#27500A', margin: '0 auto 12px', border: '2px solid #C5E4A7' }}>
           {initial}
@@ -135,7 +204,7 @@ export default function PerfilPage() {
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6 }}>
-        {posts.map(post => <PhotoCell key={post.id} post={post} />)}
+        {posts.map(post => <PhotoCell key={post.id} post={post} onClick={setSelected} />)}
         {posts.length === 0 && (
           <p style={{ gridColumn: '1/-1', textAlign: 'center', color: '#888', fontSize: 13, marginTop: 20 }}>Nenhum post ainda 🌱</p>
         )}
