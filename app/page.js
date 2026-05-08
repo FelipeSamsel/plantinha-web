@@ -295,4 +295,3 @@ function LoginScreen() {
       </div>
     </div>
   )
-}
