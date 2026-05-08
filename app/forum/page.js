@@ -38,6 +38,13 @@ export default function ForumPage() {
     setLoading(false)
   }
 
+  async function deleteForumPost(postId) {
+    if (!confirm('Tem certeza que quer excluir esta pergunta?')) return
+    await supabase.from('forum_replies').delete().eq('forum_post_id', postId)
+    await supabase.from('forum_posts').delete().eq('id', postId)
+    load()
+  }
+
   return (
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
@@ -71,10 +78,23 @@ export default function ForumPage() {
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
         {posts.map(post => {
           const [bg, fg] = BADGE[post.category] ?? ['#F1EFE8', '#444']
+          const isOwner = user && user.id === post.user_id
           return (
             <div key={post.id} style={{ background: '#fff', borderRadius: 14, border: '0.5px solid #E2F2D4', padding: 16 }}>
-              <span style={{ background: bg, color: fg, fontSize: 10, fontWeight: 500, padding: '3px 9px', borderRadius: 20, display: 'inline-block', marginBottom: 8 }}>{post.category}</span>
+              <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 8 }}>
+                <span style={{ background: bg, color: fg, fontSize: 10, fontWeight: 500, padding: '3px 9px', borderRadius: 20, display: 'inline-block' }}>{post.category}</span>
+                {isOwner && (
+                  <button
+                    onClick={() => deleteForumPost(post.id)}
+                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#B4B2A9', fontSize: 12, padding: '2px 6px', borderRadius: 6 }}
+                    onMouseOver={e => e.target.style.color = '#993C1D'}
+                    onMouseOut={e => e.target.style.color = '#B4B2A9'}>
+                    excluir
+                  </button>
+                )}
+              </div>
               <p style={{ fontWeight: 500, fontSize: 14, color: '#1a1a1a', marginBottom: 8 }}>{post.title}</p>
+              {post.body && <p style={{ fontSize: 13, color: '#888780', marginBottom: 8, lineHeight: 1.5 }}>{post.body}</p>}
               <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: '#B4B2A9' }}>
                 <span>{post.profiles?.username}</span>
                 <span style={{ color: '#3B6D11', fontWeight: 500 }}>{post.forum_replies?.length ?? 0} respostas</span>
