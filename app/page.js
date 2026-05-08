@@ -2,13 +2,11 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import PostCard from '../components/PostCard'
-import NewPost from '../components/NewPost'
 
 export default function FeedPage() {
   const [posts, setPosts] = useState([])
   const [user, setUser] = useState(null)
   const [loading, setLoading] = useState(true)
-  const [showModal, setShowModal] = useState(false)
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => setUser(data.session?.user ?? null))
@@ -38,15 +36,20 @@ export default function FeedPage() {
   }
 
   return (
-  <div>
-    {loading && <p style={{ color: '#888', textAlign: 'center', marginTop: 40 }}>Carregando...</p>}
-    {!loading && posts.length === 0 && (
-      <p style={{ color: '#888', textAlign: 'center', marginTop: 60 }}>Nenhum post ainda. Seja o primeiro! 🌿</p>
-    )}
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-      {posts.map(post => (
-        <PostCard key={post.id} post={post} user={user} onLike={toggleLike} onDelete={loadPosts} />
-      ))}
+    <div>
+      {loading && (
+        <p style={{ color: '#888', textAlign: 'center', marginTop: 40 }}>Carregando...</p>
+      )}
+      {!loading && posts.length === 0 && (
+        <p style={{ color: '#888', textAlign: 'center', marginTop: 60 }}>
+          Nenhum post ainda. Seja o primeiro! 🌿
+        </p>
+      )}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+        {posts.map(post => (
+          <PostCard key={post.id} post={post} user={user} onLike={toggleLike} onDelete={loadPosts} />
+        ))}
+      </div>
     </div>
-  </div>
-)
+  )
+}
