@@ -43,18 +43,17 @@ export default function NewPost({ user, onPost }) {
   }
 
   return (
-    <div style={{ background: '#fff', borderRadius: 16, border: '0.5px solid #E2F2D4', padding: 16, marginBottom: 24 }}>
-      <p style={{ fontWeight: 500, color: '#27500A', marginBottom: 12 }}>Nova publicação</p>
-      <label style={{ display: 'block', border: '1px dashed #C5E4A7', borderRadius: 12, padding: preview ? 0 : 24, textAlign: 'center', cursor: 'pointer', marginBottom: 12, overflow: 'hidden' }}>
+    <div>
+      <label style={{ display: 'block', border: '1px dashed #C5E4A7', borderRadius: 12, padding: preview ? 0 : 32, textAlign: 'center', cursor: 'pointer', marginBottom: 12, overflow: 'hidden', background: '#fff' }}>
         {preview
-          ? <img src={preview} alt="preview" style={{ width: '100%', maxHeight: 300, objectFit: 'cover' }} />
-          : <span style={{ color: '#888780', fontSize: 13 }}>Clique para adicionar foto 📷</span>
+          ? <img src={preview} alt="preview" style={{ width: '100%', maxHeight: 260, objectFit: 'cover', display: 'block' }} />
+          : <span style={{ color: '#888780', fontSize: 13 }}>Toque para adicionar foto 📷</span>
         }
         <input type="file" accept="image/*" onChange={onFileChange} style={{ display: 'none' }} />
       </label>
       <textarea value={caption} onChange={e => setCaption(e.target.value)}
         placeholder="Legenda..." rows={2}
-        style={{ width: '100%', border: '0.5px solid #C5E4A7', borderRadius: 10, padding: 10, fontSize: 13, fontFamily: 'inherit', resize: 'none', marginBottom: 12, outline: 'none' }} />
+        style={{ width: '100%', border: '0.5px solid #C5E4A7', borderRadius: 10, padding: 10, fontSize: 13, fontFamily: 'inherit', resize: 'none', marginBottom: 12, outline: 'none', background: '#fff' }} />
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 14 }}>
         {TAGS.map(t => (
           <button key={t} onClick={() => toggleTag(t)} style={{ padding: '4px 12px', borderRadius: 20, fontSize: 12, cursor: 'pointer', border: '0.5px solid #C5E4A7', background: tags.includes(t) ? '#EAF3DE' : '#fff', color: tags.includes(t) ? '#3B6D11' : '#888780', fontWeight: tags.includes(t) ? 500 : 400 }}>
@@ -62,8 +61,8 @@ export default function NewPost({ user, onPost }) {
           </button>
         ))}
       </div>
-      <button onClick={publish} disabled={loading} style={{ background: '#3B6D11', color: '#EAF3DE', border: 'none', borderRadius: 10, padding: '10px 24px', fontSize: 14, fontWeight: 500, cursor: 'pointer', width: '100%' }}>
-        {loading ? 'Publicando...' : 'Publicar'}
+      <button onClick={publish} disabled={loading} style={{ background: '#3B6D11', color: '#EAF3DE', border: 'none', borderRadius: 10, padding: '12px 24px', fontSize: 14, fontWeight: 500, cursor: 'pointer', width: '100%' }}>
+        {loading ? 'Publicando...' : 'Publicar 🌱'}
       </button>
     </div>
   )
