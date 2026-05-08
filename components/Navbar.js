@@ -16,13 +16,6 @@ export default function Navbar() {
     return () => listener.subscription.unsubscribe()
   }, [])
 
-  async function signInWithGoogle() {
-    await supabase.auth.signInWithOAuth({
-      provider: 'google',
-      options: { redirectTo: `${window.location.origin}/auth/callback` }
-    })
-  }
-
   async function signOut() {
     await supabase.auth.signOut()
     setUser(null)
@@ -34,7 +27,7 @@ export default function Navbar() {
         <div onClick={() => setShowModal(false)} style={{
           position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)',
           display: 'flex', alignItems: 'flex-end', justifyContent: 'center',
-          zIndex: 1000, padding: 0
+          zIndex: 1000
         }}>
           <div onClick={e => e.stopPropagation()} style={{
             background: '#F4FAF0', borderRadius: '20px 20px 0 0',
@@ -66,22 +59,18 @@ export default function Navbar() {
           <Link href="/" style={navLink}>Feed</Link>
           <Link href="/forum" style={navLink}>Fórum</Link>
           {user && <Link href="/perfil" style={navLink}>Jardim</Link>}
-
           {user && (
             <button onClick={() => setShowModal(true)} style={{
               width: 32, height: 32, borderRadius: '50%',
               background: '#3B6D11', border: 'none',
               color: '#EAF3DE', fontSize: 20, fontWeight: 300,
               cursor: 'pointer', display: 'flex', alignItems: 'center',
-              justifyContent: 'center', marginLeft: 4,
-              lineHeight: 1
+              justifyContent: 'center', marginLeft: 4, lineHeight: 1
             }}>+</button>
           )}
-
-          {user
-            ? <button onClick={signOut} style={btnOutline}>Sair</button>
-            : <button onClick={signInWithGoogle} style={btnGreen}>Entrar com Google</button>
-          }
+          {user && (
+            <button onClick={signOut} style={btnOutline}>Sair</button>
+          )}
         </div>
       </nav>
     </>
@@ -89,5 +78,4 @@ export default function Navbar() {
 }
 
 const navLink = { fontSize: 14, color: '#3B6D11', textDecoration: 'none', fontWeight: 500 }
-const btnGreen = { background: '#3B6D11', color: '#EAF3DE', border: 'none', borderRadius: 20, padding: '7px 16px', fontSize: 13, fontWeight: 500, cursor: 'pointer' }
 const btnOutline = { background: 'transparent', color: '#993C1D', border: '0.5px solid #993C1D', borderRadius: 20, padding: '7px 16px', fontSize: 13, cursor: 'pointer' }
