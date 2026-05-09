@@ -2,6 +2,20 @@
 import { useState } from 'react'
 import { supabase } from '../lib/supabase'
 
+function Caption({ text }) {
+  if (!text) return null
+  const parts = text.split(/(#[\wÀ-ú]+)/g)
+  return (
+    <p style={{ fontSize: 14, color: '#333', lineHeight: 1.5, margin: '0 0 10px' }}>
+      {parts.map((part, i) =>
+        part.startsWith('#')
+          ? <span key={i} style={{ color: '#3B6D11', fontWeight: 500 }}>{part}</span>
+          : <span key={i}>{part}</span>
+      )}
+    </p>
+  )
+}
+
 export default function PostCard({ post, user, onLike, onDelete }) {
   const [lightbox, setLightbox] = useState(false)
   const [showLikes, setShowLikes] = useState(false)
@@ -20,7 +34,6 @@ export default function PostCard({ post, user, onLike, onDelete }) {
 
   return (
     <>
-      {/* lightbox */}
       {lightbox && (
         <div onClick={() => setLightbox(false)} style={{
           position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.92)',
@@ -40,12 +53,11 @@ export default function PostCard({ post, user, onLike, onDelete }) {
         </div>
       )}
 
-      {/* modal de quem curtiu */}
       {showLikes && (
         <div onClick={() => setShowLikes(false)} style={{
           position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)',
           display: 'flex', alignItems: 'flex-end', justifyContent: 'center',
-          zIndex: 1000, padding: 0
+          zIndex: 1000
         }}>
           <div onClick={e => e.stopPropagation()} style={{
             background: '#fff', borderRadius: '20px 20px 0 0',
@@ -78,7 +90,6 @@ export default function PostCard({ post, user, onLike, onDelete }) {
         </div>
       )}
 
-      {/* card do post */}
       <div style={{ background: '#fff', borderRadius: 16, border: '0.5px solid #E2F2D4', overflow: 'hidden', marginBottom: 2 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 14px' }}>
           <div style={{ width: 36, height: 36, borderRadius: '50%', background: '#EAF3DE', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 500, color: '#3B6D11', fontSize: 14, flexShrink: 0 }}>
@@ -102,14 +113,7 @@ export default function PostCard({ post, user, onLike, onDelete }) {
         )}
 
         <div style={{ padding: '12px 14px' }}>
-          <p style={{ fontSize: 14, color: '#333', lineHeight: 1.5, margin: '0 0 10px' }}>{post.caption}</p>
-          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 12 }}>
-            {post.post_tags?.map(t => (
-              <span key={t.tag} style={{ background: '#F4FAF0', color: '#3B6D11', fontSize: 11, padding: '3px 10px', borderRadius: 20, border: '0.5px solid #C5E4A7' }}>
-                {t.tag}
-              </span>
-            ))}
-          </div>
+          <Caption text={post.caption} />
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
             <button onClick={() => onLike(post.id)} style={{ background: 'none', border: 'none', cursor: user ? 'pointer' : 'default', display: 'flex', alignItems: 'center', gap: 6, padding: 0 }}>
               <span style={{ fontSize: 18, color: liked ? '#3B6D11' : '#B4B2A9' }}>♥</span>

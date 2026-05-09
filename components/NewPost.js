@@ -2,13 +2,10 @@
 import { useState } from 'react'
 import { supabase } from '../lib/supabase'
 
-const TAGS = ['Suculenta', 'Cacto', 'Monstera', 'Orquídea', 'Samambaia', 'Palmeira']
-
 export default function NewPost({ user, onPost }) {
   const [caption, setCaption] = useState('')
   const [file, setFile] = useState(null)
   const [preview, setPreview] = useState(null)
-  const [tags, setTags] = useState([])
   const [loading, setLoading] = useState(false)
 
   function onFileChange(e) {
@@ -18,8 +15,9 @@ export default function NewPost({ user, onPost }) {
     setPreview(URL.createObjectURL(f))
   }
 
-  function toggleTag(t) {
-    setTags(prev => prev.includes(t) ? prev.filter(x => x !== t) : [...prev, t])
+  function extractTags(text) {
+    const matches = text.match(/#[\wÀ-ú]+/g) ?? []
+    return [...new Set(matches.map(t => t.slice(1).toLowerCase()))]
   }
 
   async function publish() {
@@ -33,13 +31,29 @@ export default function NewPost({ user, onPost }) {
       const { data: post } = await supabase.from('posts')
         .insert({ user_id: user.id, caption, image_url: urlData.publicUrl })
         .select().single()
+      const tags = extractTags(caption)
       if (tags.length > 0) {
         await supabase.from('post_tags').insert(tags.map(tag => ({ post_id: post.id, tag })))
       }
-      setCaption(''); setFile(null); setPreview(null); setTags([])
+      setCaption(''); setFile(null); setPreview(null)
       onPost()
     } catch (e) { alert(e.message) }
     finally { setLoading(false) }
+  }
+
+  // preview da legenda com hashtags coloridas
+  function renderCaptionPreview() {
+    if (!caption) return null
+    const parts = caption.split(/(#[\wÀ-ú]+)/g)
+    return (
+      <div style={{ fontSize: 13, color: '#555', lineHeight: 1.5, padding: '8px 12px', background: '#F4FAF0', borderRadius: 10, marginBottom: 12 }}>
+        {parts.map((part, i) =>
+          part.startsWith('#')
+            ? <span key={i} style={{ color: '#3B6D11', fontWeight: 500 }}>{part}</span>
+            : <span key={i}>{part}</span>
+        )}
+      </div>
+    )
   }
 
   return (
@@ -51,17 +65,15 @@ export default function NewPost({ user, onPost }) {
         }
         <input type="file" accept="image/*" onChange={onFileChange} style={{ display: 'none' }} />
       </label>
+
       <textarea value={caption} onChange={e => setCaption(e.target.value)}
-        placeholder="Legenda..." rows={2}
-        style={{ width: '100%', border: '0.5px solid #C5E4A7', borderRadius: 10, padding: 10, fontSize: 13, fontFamily: 'inherit', resize: 'none', marginBottom: 12, outline: 'none', background: '#fff' }} />
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 14 }}>
-        {TAGS.map(t => (
-          <button key={t} onClick={() => toggleTag(t)} style={{ padding: '4px 12px', borderRadius: 20, fontSize: 12, cursor: 'pointer', border: '0.5px solid #C5E4A7', background: tags.includes(t) ? '#EAF3DE' : '#fff', color: tags.includes(t) ? '#3B6D11' : '#888780', fontWeight: tags.includes(t) ? 500 : 400 }}>
-            {t}
-          </button>
-        ))}
-      </div>
-      <button onClick={publish} disabled={loading} style={{ background: '#3B6D11', color: '#EAF3DE', border: 'none', borderRadius: 10, padding: '12px 24px', fontSize: 14, fontWeight: 500, cursor: 'pointer', width: '100%' }}>
+        placeholder="Escreva a legenda... use #hashtags para categorizar 🌿"
+        rows={3}
+        style={{ width: '100%', border: '0.5px solid #C5E4A7', borderRadius: 10, padding: 10, fontSize: 13, fontFamily: 'inherit', resize: 'none', marginBottom: 8, outline: 'none', background: '#fff' }} />
+
+      {caption && renderCaptionPreview()}
+
+      <button onClick={publish} disabled={loading} style={{ background: '#3B6D11', color: '#EAF3DE', border: 'none', borderRadius: 10, padding: '12px 24px', fontSize: 14, fontWeight: 500, cursor: 'pointer', width: '100%', fontFamily: 'inherit' }}>
         {loading ? 'Publicando...' : 'Publicar 🌱'}
       </button>
     </div>
