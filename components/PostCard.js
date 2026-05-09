@@ -280,7 +280,7 @@ export default function PostCard({ post, user, onLike, onDelete, onTagClick }) {
         </div>
 
         {post.image_url && (
-          <img src={post.image_url} alt="post" onClick={() => setLightbox(true)} style={{ width: '100%', maxHeight: 360, objectFit: 'cover', cursor: 'zoom-in', display: 'block' }} />
+          <img src={post.image_url} alt="post" onClick={() => setLightbox(true)} style={{ width: '100%', maxHeight: 500, objectFit: 'contain', background: '#F4FAF0', cursor: 'zoom-in', display: 'block' }} />
         )}
 
         <div style={{ padding: '12px 14px' }}>
