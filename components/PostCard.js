@@ -47,33 +47,29 @@ export default function PostCard({ post, user, onLike, onDelete, onTagClick }) {
     if (data) setComments(data)
   }
 
-async function sendComment() {
-  if (!newComment.trim()) return
-  setLoadingComment(true)
-
-  await supabase.from('comments').insert({
-    post_id: post.id,
-    user_id: user.id,
-    body: newComment.trim()
-  })
-
-  // notifica o dono do post se não for ele mesmo comentando
-  if (post.user_id !== user.id) {
-    const { data: profile } = await supabase
-      .from('profiles').select('username').eq('id', user.id).single()
-    await supabase.from('notifications').insert({
-      user_id: post.user_id,
-      from_user_id: user.id,
-      type: 'comment',
+  async function sendComment() {
+    if (!newComment.trim()) return
+    setLoadingComment(true)
+    await supabase.from('comments').insert({
       post_id: post.id,
-      message: `${profile?.username ?? 'Alguém'} comentou na sua foto: "${newComment.trim().slice(0, 50)}${newComment.length > 50 ? '...' : ''}"`
+      user_id: user.id,
+      body: newComment.trim()
     })
+    if (post.user_id !== user.id) {
+      const { data: profile } = await supabase
+        .from('profiles').select('username').eq('id', user.id).single()
+      await supabase.from('notifications').insert({
+        user_id: post.user_id,
+        from_user_id: user.id,
+        type: 'comment',
+        post_id: post.id,
+        message: `${profile?.username ?? 'Alguém'} comentou na sua foto: "${newComment.trim().slice(0, 50)}${newComment.length > 50 ? '...' : ''}"`
+      })
+    }
+    setNewComment('')
+    await loadComments()
+    setLoadingComment(false)
   }
-
-  setNewComment('')
-  await loadComments()
-  setLoadingComment(false)
-}
 
   async function deleteComment(commentId) {
     await supabase.from('comments').delete().eq('id', commentId)
@@ -104,6 +100,19 @@ async function sendComment() {
     if (onDelete) onDelete()
   }
 
+  const overlayStyle = {
+    position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)',
+    display: 'flex', alignItems: 'center', justifyContent: 'center',
+    zIndex: 1000, padding: 20
+  }
+
+  const modalStyle = {
+    background: '#fff', borderRadius: 20,
+    width: '100%', maxWidth: 370,
+    display: 'flex', flexDirection: 'column',
+    boxShadow: '0 8px 40px rgba(0,0,0,0.15)'
+  }
+
   return (
     <>
       {lightbox && (
@@ -126,17 +135,9 @@ async function sendComment() {
       )}
 
       {showLikes && (
-        <div onClick={() => setShowLikes(false)} style={{
-          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)',
-          display: 'flex', alignItems: 'flex-end', justifyContent: 'center',
-          zIndex: 1000
-        }}>
-          <div onClick={e => e.stopPropagation()} style={{
-            background: '#fff', borderRadius: '20px 20px 0 0',
-            width: '100%', maxWidth: 390, maxHeight: '60vh',
-            overflow: 'hidden', display: 'flex', flexDirection: 'column'
-          }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 16px 12px', borderBottom: '0.5px solid #E2F2D4' }}>
+        <div onClick={() => setShowLikes(false)} style={overlayStyle}>
+          <div onClick={e => e.stopPropagation()} style={{ ...modalStyle, maxHeight: '60vh', overflow: 'hidden' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 16px 12px', borderBottom: '0.5px solid #E2F2D4', flexShrink: 0 }}>
               <span style={{ fontWeight: 500, fontSize: 15, color: '#27500A' }}>♥ Curtidas ({likeCount})</span>
               <button onClick={() => setShowLikes(false)} style={{ background: 'none', border: 'none', fontSize: 18, cursor: 'pointer', color: '#888780' }}>✕</button>
             </div>
@@ -159,16 +160,8 @@ async function sendComment() {
       )}
 
       {showComments && (
-        <div onClick={() => setShowComments(false)} style={{
-          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)',
-          display: 'flex', alignItems: 'flex-end', justifyContent: 'center',
-          zIndex: 1000
-        }}>
-          <div onClick={e => e.stopPropagation()} style={{
-            background: '#fff', borderRadius: '20px 20px 0 0',
-            width: '100%', maxWidth: 390, maxHeight: '75vh',
-            display: 'flex', flexDirection: 'column'
-          }}>
+        <div onClick={() => setShowComments(false)} style={overlayStyle}>
+          <div onClick={e => e.stopPropagation()} style={{ ...modalStyle, maxHeight: '75vh' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 16px 12px', borderBottom: '0.5px solid #E2F2D4', flexShrink: 0 }}>
               <span style={{ fontWeight: 500, fontSize: 15, color: '#27500A' }}>💬 Comentários</span>
               <button onClick={() => setShowComments(false)} style={{ background: 'none', border: 'none', fontSize: 18, cursor: 'pointer', color: '#888780' }}>✕</button>
@@ -231,15 +224,8 @@ async function sendComment() {
       )}
 
       {editing && (
-        <div onClick={() => setEditing(false)} style={{
-          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)',
-          display: 'flex', alignItems: 'flex-end', justifyContent: 'center',
-          zIndex: 1000
-        }}>
-          <div onClick={e => e.stopPropagation()} style={{
-            background: '#F4FAF0', borderRadius: '20px 20px 0 0',
-            width: '100%', maxWidth: 390, padding: '20px 16px 32px'
-          }}>
+        <div onClick={() => setEditing(false)} style={overlayStyle}>
+          <div onClick={e => e.stopPropagation()} style={{ ...modalStyle, background: '#F4FAF0', padding: '20px 16px 24px' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
               <span style={{ fontWeight: 500, fontSize: 15, color: '#27500A' }}>Editar post</span>
               <button onClick={() => setEditing(false)} style={{ background: 'none', border: 'none', fontSize: 18, cursor: 'pointer', color: '#888780' }}>✕</button>
