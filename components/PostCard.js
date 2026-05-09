@@ -2,21 +2,24 @@
 import { useState } from 'react'
 import { supabase } from '../lib/supabase'
 
-function Caption({ text }) {
+function Caption({ text, onTagClick }) {
   if (!text) return null
   const parts = text.split(/(#[\wÀ-ú]+)/g)
   return (
     <p style={{ fontSize: 14, color: '#333', lineHeight: 1.5, margin: '0 0 10px' }}>
       {parts.map((part, i) =>
         part.startsWith('#')
-          ? <span key={i} style={{ color: '#3B6D11', fontWeight: 500 }}>{part}</span>
+          ? <span key={i} onClick={() => onTagClick(part.slice(1).toLowerCase())}
+              style={{ color: '#3B6D11', fontWeight: 500, cursor: 'pointer' }}>
+              {part}
+            </span>
           : <span key={i}>{part}</span>
       )}
     </p>
   )
 }
 
-export default function PostCard({ post, user, onLike, onDelete }) {
+export default function PostCard({ post, user, onLike, onDelete, onTagClick }) {
   const [lightbox, setLightbox] = useState(false)
   const [showLikes, setShowLikes] = useState(false)
   const [editing, setEditing] = useState(false)
@@ -38,21 +41,16 @@ export default function PostCard({ post, user, onLike, onDelete }) {
   async function saveEdit() {
     if (!newCaption.trim()) return alert('A legenda não pode ficar vazia.')
     setSaving(true)
-
-    // atualiza a legenda
     await supabase.from('posts').update({ caption: newCaption }).eq('id', post.id)
-
-    // recalcula as tags a partir da nova legenda
     const matches = newCaption.match(/#[\wÀ-ú]+/g) ?? []
     const tags = [...new Set(matches.map(t => t.slice(1).toLowerCase()))]
     await supabase.from('post_tags').delete().eq('post_id', post.id)
     if (tags.length > 0) {
       await supabase.from('post_tags').insert(tags.map(tag => ({ post_id: post.id, tag })))
     }
-
     setSaving(false)
     setEditing(false)
-    if (onDelete) onDelete() // recarrega o feed
+    if (onDelete) onDelete()
   }
 
   return (
@@ -113,7 +111,6 @@ export default function PostCard({ post, user, onLike, onDelete }) {
         </div>
       )}
 
-      {/* modal de edição */}
       {editing && (
         <div onClick={() => setEditing(false)} style={{
           position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)',
@@ -180,7 +177,7 @@ export default function PostCard({ post, user, onLike, onDelete }) {
         )}
 
         <div style={{ padding: '12px 14px' }}>
-          <Caption text={post.caption} />
+          <Caption text={post.caption} onTagClick={onTagClick ?? (() => {})} />
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
             <button onClick={() => onLike(post.id)} style={{ background: 'none', border: 'none', cursor: user ? 'pointer' : 'default', display: 'flex', alignItems: 'center', gap: 6, padding: 0 }}>
               <span style={{ fontSize: 18, color: liked ? '#3B6D11' : '#B4B2A9' }}>♥</span>

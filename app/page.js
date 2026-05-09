@@ -7,6 +7,7 @@ export default function FeedPage() {
   const [posts, setPosts] = useState([])
   const [user, setUser] = useState(null)
   const [loading, setLoading] = useState(true)
+  const [activeTag, setActiveTag] = useState(null)
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
@@ -16,16 +17,29 @@ export default function FeedPage() {
     const { data: listener } = supabase.auth.onAuthStateChange((_e, session) => {
       setUser(session?.user ?? null)
     })
-    loadPosts()
     return () => listener.subscription.unsubscribe()
   }, [])
 
+  useEffect(() => { loadPosts() }, [activeTag])
+
   async function loadPosts() {
-    const { data } = await supabase
+    let q = supabase
       .from('posts')
       .select('*, profiles(username), post_likes(id, user_id, profiles(username)), post_tags(tag)')
       .order('created_at', { ascending: false })
       .limit(30)
+
+    if (activeTag) {
+      const { data: taggedIds } = await supabase
+        .from('post_tags')
+        .select('post_id')
+        .eq('tag', activeTag)
+      const ids = taggedIds?.map(t => t.post_id) ?? []
+      if (ids.length === 0) { setPosts([]); return }
+      q = q.in('id', ids)
+    }
+
+    const { data } = await q
     if (data) setPosts(data)
   }
 
@@ -46,14 +60,32 @@ export default function FeedPage() {
 
   return (
     <div>
+      {/* filtro ativo */}
+      {activeTag && (
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: '#EAF3DE', borderRadius: 12, padding: '10px 14px', marginBottom: 16, border: '0.5px solid #C5E4A7' }}>
+          <span style={{ fontSize: 14, color: '#27500A', fontWeight: 500 }}>#{activeTag}</span>
+          <button onClick={() => setActiveTag(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#888780', fontSize: 13, display: 'flex', alignItems: 'center', gap: 4 }}>
+            ✕ limpar filtro
+          </button>
+        </div>
+      )}
+
       {posts.length === 0 && (
         <p style={{ color: '#888', textAlign: 'center', marginTop: 60 }}>
-          Nenhum post ainda. Seja o primeiro! 🌿
+          {activeTag ? `Nenhum post com #${activeTag} ainda.` : 'Nenhum post ainda. Seja o primeiro! 🌿'}
         </p>
       )}
+
       <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
         {posts.map(post => (
-          <PostCard key={post.id} post={post} user={user} onLike={toggleLike} onDelete={loadPosts} />
+          <PostCard
+            key={post.id}
+            post={post}
+            user={user}
+            onLike={toggleLike}
+            onDelete={loadPosts}
+            onTagClick={tag => setActiveTag(tag)}
+          />
         ))}
       </div>
     </div>
@@ -156,7 +188,6 @@ function LoginScreen() {
         <div style={{ position: 'absolute', top: '40%', left: -30, width: 100, height: 100, borderRadius: '50%', background: 'rgba(192,221,151,0.4)' }} />
       </div>
 
-      {/* home */}
       {mode === 'home' && (
         <div style={cardStyle}>
           <div style={{ marginBottom: 20 }}>{plantIcon}</div>
@@ -175,7 +206,6 @@ function LoginScreen() {
         </div>
       )}
 
-      {/* login */}
       {mode === 'login' && (
         <div style={cardStyle}>
           <button onClick={() => setMode('home')} style={{ alignSelf: 'flex-start', background: 'none', border: 'none', color: '#888780', cursor: 'pointer', fontSize: 13, marginBottom: 16, padding: 0, fontFamily: 'inherit' }}>← Voltar</button>
@@ -191,7 +221,6 @@ function LoginScreen() {
         </div>
       )}
 
-      {/* cadastro */}
       {mode === 'register' && !sent && (
         <div style={cardStyle}>
           <button onClick={() => setMode('home')} style={{ alignSelf: 'flex-start', background: 'none', border: 'none', color: '#888780', cursor: 'pointer', fontSize: 13, marginBottom: 16, padding: 0, fontFamily: 'inherit' }}>← Voltar</button>
@@ -208,7 +237,6 @@ function LoginScreen() {
         </div>
       )}
 
-      {/* e-mail enviado */}
       {mode === 'register' && sent && (
         <div style={cardStyle}>
           <div style={{ fontSize: 48, marginBottom: 16 }}>📬</div>
