@@ -44,16 +44,28 @@ export default function FeedPage() {
   }
 
   async function toggleLike(postId) {
-    if (!user) return
-    const post = posts.find(p => p.id === postId)
-    const liked = post.post_likes.some(l => l.user_id === user.id)
-    if (liked) {
-      await supabase.from('post_likes').delete().match({ post_id: postId, user_id: user.id })
-    } else {
-      await supabase.from('post_likes').insert({ post_id: postId, user_id: user.id })
+  if (!user) return
+  const post = posts.find(p => p.id === postId)
+  const liked = post.post_likes.some(l => l.user_id === user.id)
+  if (liked) {
+    await supabase.from('post_likes').delete().match({ post_id: postId, user_id: user.id })
+  } else {
+    await supabase.from('post_likes').insert({ post_id: postId, user_id: user.id })
+    // notifica o dono do post se não for ele mesmo
+    if (post.user_id !== user.id) {
+      const { data: profile } = await supabase
+        .from('profiles').select('username').eq('id', user.id).single()
+      await supabase.from('notifications').insert({
+        user_id: post.user_id,
+        from_user_id: user.id,
+        type: 'like',
+        post_id: postId,
+        message: `${profile?.username ?? 'Alguém'} curtiu sua foto 🌿`
+      })
     }
-    loadPosts()
   }
+  loadPosts()
+}
 
   if (loading) return null
   if (!user) return <LoginScreen />

@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { supabase } from '../lib/supabase'
 import NewPost from './NewPost'
+import Notifications from './Notifications'
 
 export default function Navbar() {
   const [user, setUser] = useState(null)
@@ -59,13 +60,14 @@ export default function Navbar() {
           <Link href="/" style={navLink}>Feed</Link>
           <Link href="/forum" style={navLink}>Fórum</Link>
           {user && <Link href="/perfil" style={navLink}>Jardim</Link>}
+          {user && <Notifications user={user} />}
           {user && (
             <button onClick={() => setShowModal(true)} style={{
               width: 32, height: 32, borderRadius: '50%',
               background: '#3B6D11', border: 'none',
               color: '#EAF3DE', fontSize: 20, fontWeight: 300,
               cursor: 'pointer', display: 'flex', alignItems: 'center',
-              justifyContent: 'center', marginLeft: 4, lineHeight: 1
+              justifyContent: 'center', lineHeight: 1
             }}>+</button>
           )}
           {user && (
