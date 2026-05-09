@@ -71,9 +71,17 @@ export default function PublicProfilePage() {
       {selected && <Lightbox post={selected} onClose={() => setSelected(null)} />}
 
       <div style={{ textAlign: 'center', marginBottom: 32 }}>
-        <div style={{ width: 80, height: 80, borderRadius: '50%', background: '#EAF3DE', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 28, fontWeight: 500, color: '#27500A', margin: '0 auto 12px', border: '2px solid #C5E4A7' }}>
-          {initial}
+
+        {/* avatar */}
+        <div style={{ width: 88, height: 88, margin: '0 auto 12px' }}>
+          {profile.avatar_url
+            ? <img src={profile.avatar_url} alt="avatar" style={{ width: 88, height: 88, borderRadius: '50%', objectFit: 'cover', border: '2px solid #C5E4A7', display: 'block' }} />
+            : <div style={{ width: 88, height: 88, borderRadius: '50%', background: '#EAF3DE', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 32, fontWeight: 500, color: '#27500A', border: '2px solid #C5E4A7' }}>
+                {initial}
+              </div>
+          }
         </div>
+
         <p style={{ fontWeight: 500, fontSize: 18, color: '#1a1a1a', marginBottom: 4 }}>{profile.username}</p>
         {profile.bio && <p style={{ fontSize: 13, color: '#888780', marginBottom: 12 }}>{profile.bio}</p>}
 

@@ -41,7 +41,7 @@ export default function PostCard({ post, user, onLike, onDelete, onTagClick }) {
   async function loadComments() {
     const { data } = await supabase
       .from('comments')
-      .select('*, profiles(username)')
+      .select('*, profiles(username, avatar_url)')
       .eq('post_id', post.id)
       .order('created_at', { ascending: true })
     if (data) setComments(data)
@@ -113,6 +113,18 @@ export default function PostCard({ post, user, onLike, onDelete, onTagClick }) {
     boxShadow: '0 8px 40px rgba(0,0,0,0.15)'
   }
 
+  function Avatar({ url, name, size = 36 }) {
+    const ini = (name?.[0] ?? '?').toUpperCase()
+    if (url) return (
+      <img src={url} alt={name} style={{ width: size, height: size, borderRadius: '50%', objectFit: 'cover', flexShrink: 0 }} />
+    )
+    return (
+      <div style={{ width: size, height: size, borderRadius: '50%', background: '#EAF3DE', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 500, color: '#3B6D11', fontSize: size * 0.38, flexShrink: 0 }}>
+        {ini}
+      </div>
+    )
+  }
+
   return (
     <>
       {lightbox && (
@@ -143,17 +155,12 @@ export default function PostCard({ post, user, onLike, onDelete, onTagClick }) {
             </div>
             <div style={{ overflowY: 'auto', padding: '8px 0' }}>
               {likeCount === 0 && <p style={{ textAlign: 'center', color: '#888', fontSize: 13, padding: 24 }}>Nenhuma curtida ainda 🌱</p>}
-              {post.post_likes?.map(like => {
-                const likeInitial = (like.profiles?.username?.[0] ?? '?').toUpperCase()
-                return (
-                  <div key={like.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 16px' }}>
-                    <div style={{ width: 36, height: 36, borderRadius: '50%', background: '#EAF3DE', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 500, color: '#3B6D11', fontSize: 14, flexShrink: 0 }}>
-                      {likeInitial}
-                    </div>
-                    <span style={{ fontSize: 14, color: '#1a1a1a', fontWeight: 500 }}>{like.profiles?.username ?? 'usuário'}</span>
-                  </div>
-                )
-              })}
+              {post.post_likes?.map(like => (
+                <div key={like.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 16px' }}>
+                  <Avatar url={like.profiles?.avatar_url} name={like.profiles?.username} />
+                  <span style={{ fontSize: 14, color: '#1a1a1a', fontWeight: 500 }}>{like.profiles?.username ?? 'usuário'}</span>
+                </div>
+              ))}
             </div>
           </div>
         </div>
@@ -172,13 +179,10 @@ export default function PostCard({ post, user, onLike, onDelete, onTagClick }) {
                 <p style={{ textAlign: 'center', color: '#888', fontSize: 13, padding: 24 }}>Nenhum comentário ainda. Seja o primeiro! 🌱</p>
               )}
               {comments.map(comment => {
-                const cInitial = (comment.profiles?.username?.[0] ?? '?').toUpperCase()
                 const isCommentOwner = user && user.id === comment.user_id
                 return (
                   <div key={comment.id} style={{ display: 'flex', gap: 10, padding: '10px 16px', alignItems: 'flex-start' }}>
-                    <div style={{ width: 32, height: 32, borderRadius: '50%', background: '#EAF3DE', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 500, color: '#3B6D11', fontSize: 12, flexShrink: 0 }}>
-                      {cInitial}
-                    </div>
+                    <Avatar url={comment.profiles?.avatar_url} name={comment.profiles?.username} size={32} />
                     <div style={{ flex: 1 }}>
                       <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, marginBottom: 2 }}>
                         <a href={`/perfil/${comment.user_id}`} style={{ fontWeight: 500, fontSize: 13, color: '#1a1a1a', textDecoration: 'none' }}>
@@ -253,9 +257,7 @@ export default function PostCard({ post, user, onLike, onDelete, onTagClick }) {
 
       <div style={{ background: '#fff', borderRadius: 16, border: '0.5px solid #E2F2D4', overflow: 'hidden', marginBottom: 2 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 14px' }}>
-          <div style={{ width: 36, height: 36, borderRadius: '50%', background: '#EAF3DE', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 500, color: '#3B6D11', fontSize: 14, flexShrink: 0 }}>
-            {initial}
-          </div>
+          <Avatar url={post.profiles?.avatar_url} name={post.profiles?.username} />
           <a href={`/perfil/${post.user_id}`} style={{ fontWeight: 500, fontSize: 14, color: '#1a1a1a', flex: 1, textDecoration: 'none' }}
             onMouseOver={e => e.target.style.color = '#3B6D11'}
             onMouseOut={e => e.target.style.color = '#1a1a1a'}>
