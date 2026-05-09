@@ -19,6 +19,9 @@ function Caption({ text }) {
 export default function PostCard({ post, user, onLike, onDelete }) {
   const [lightbox, setLightbox] = useState(false)
   const [showLikes, setShowLikes] = useState(false)
+  const [editing, setEditing] = useState(false)
+  const [newCaption, setNewCaption] = useState(post.caption ?? '')
+  const [saving, setSaving] = useState(false)
   const liked = user && post.post_likes?.some(l => l.user_id === user.id)
   const isOwner = user && user.id === post.user_id
   const initial = (post.profiles?.username?.[0] ?? '?').toUpperCase()
@@ -30,6 +33,26 @@ export default function PostCard({ post, user, onLike, onDelete }) {
     await supabase.from('post_likes').delete().eq('post_id', post.id)
     await supabase.from('posts').delete().eq('id', post.id)
     if (onDelete) onDelete()
+  }
+
+  async function saveEdit() {
+    if (!newCaption.trim()) return alert('A legenda não pode ficar vazia.')
+    setSaving(true)
+
+    // atualiza a legenda
+    await supabase.from('posts').update({ caption: newCaption }).eq('id', post.id)
+
+    // recalcula as tags a partir da nova legenda
+    const matches = newCaption.match(/#[\wÀ-ú]+/g) ?? []
+    const tags = [...new Set(matches.map(t => t.slice(1).toLowerCase()))]
+    await supabase.from('post_tags').delete().eq('post_id', post.id)
+    if (tags.length > 0) {
+      await supabase.from('post_tags').insert(tags.map(tag => ({ post_id: post.id, tag })))
+    }
+
+    setSaving(false)
+    setEditing(false)
+    if (onDelete) onDelete() // recarrega o feed
   }
 
   return (
@@ -90,6 +113,42 @@ export default function PostCard({ post, user, onLike, onDelete }) {
         </div>
       )}
 
+      {/* modal de edição */}
+      {editing && (
+        <div onClick={() => setEditing(false)} style={{
+          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)',
+          display: 'flex', alignItems: 'flex-end', justifyContent: 'center',
+          zIndex: 1000
+        }}>
+          <div onClick={e => e.stopPropagation()} style={{
+            background: '#F4FAF0', borderRadius: '20px 20px 0 0',
+            width: '100%', maxWidth: 390, padding: '20px 16px 32px'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+              <span style={{ fontWeight: 500, fontSize: 15, color: '#27500A' }}>Editar post</span>
+              <button onClick={() => setEditing(false)} style={{ background: 'none', border: 'none', fontSize: 18, cursor: 'pointer', color: '#888780' }}>✕</button>
+            </div>
+            {post.image_url && (
+              <img src={post.image_url} alt="" style={{ width: '100%', height: 160, objectFit: 'cover', borderRadius: 12, marginBottom: 12 }} />
+            )}
+            <textarea
+              value={newCaption}
+              onChange={e => setNewCaption(e.target.value)}
+              rows={4}
+              style={{ width: '100%', border: '0.5px solid #C5E4A7', borderRadius: 10, padding: 10, fontSize: 13, fontFamily: 'inherit', resize: 'none', outline: 'none', background: '#fff', marginBottom: 12 }}
+            />
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button onClick={() => setEditing(false)} style={{ flex: 1, background: '#fff', border: '0.5px solid #C5E4A7', borderRadius: 10, padding: '11px 0', fontSize: 13, cursor: 'pointer', color: '#888780', fontFamily: 'inherit' }}>
+                Cancelar
+              </button>
+              <button onClick={saveEdit} disabled={saving} style={{ flex: 1, background: '#3B6D11', border: 'none', borderRadius: 10, padding: '11px 0', fontSize: 13, fontWeight: 500, cursor: 'pointer', color: '#EAF3DE', fontFamily: 'inherit' }}>
+                {saving ? 'Salvando...' : 'Salvar'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div style={{ background: '#fff', borderRadius: 16, border: '0.5px solid #E2F2D4', overflow: 'hidden', marginBottom: 2 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 14px' }}>
           <div style={{ width: 36, height: 36, borderRadius: '50%', background: '#EAF3DE', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 500, color: '#3B6D11', fontSize: 14, flexShrink: 0 }}>
@@ -99,12 +158,20 @@ export default function PostCard({ post, user, onLike, onDelete }) {
             {post.profiles?.username ?? 'usuário'}
           </span>
           {isOwner && (
-            <button onClick={deletePost}
-              style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#B4B2A9', fontSize: 12, padding: '4px 8px', borderRadius: 8 }}
-              onMouseOver={e => e.target.style.color = '#993C1D'}
-              onMouseOut={e => e.target.style.color = '#B4B2A9'}>
-              excluir
-            </button>
+            <div style={{ display: 'flex', gap: 4 }}>
+              <button onClick={() => setEditing(true)}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#B4B2A9', fontSize: 12, padding: '4px 8px', borderRadius: 8 }}
+                onMouseOver={e => e.target.style.color = '#3B6D11'}
+                onMouseOut={e => e.target.style.color = '#B4B2A9'}>
+                editar
+              </button>
+              <button onClick={deletePost}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#B4B2A9', fontSize: 12, padding: '4px 8px', borderRadius: 8 }}
+                onMouseOver={e => e.target.style.color = '#993C1D'}
+                onMouseOut={e => e.target.style.color = '#B4B2A9'}>
+                excluir
+              </button>
+            </div>
           )}
         </div>
 
