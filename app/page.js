@@ -44,35 +44,33 @@ export default function FeedPage() {
   }
 
   async function toggleLike(postId) {
-  if (!user) return
-  const post = posts.find(p => p.id === postId)
-  const liked = post.post_likes.some(l => l.user_id === user.id)
-  if (liked) {
-    await supabase.from('post_likes').delete().match({ post_id: postId, user_id: user.id })
-  } else {
-    await supabase.from('post_likes').insert({ post_id: postId, user_id: user.id })
-    // notifica o dono do post se não for ele mesmo
-    if (post.user_id !== user.id) {
-      const { data: profile } = await supabase
-        .from('profiles').select('username').eq('id', user.id).single()
-      await supabase.from('notifications').insert({
-        user_id: post.user_id,
-        from_user_id: user.id,
-        type: 'like',
-        post_id: postId,
-        message: `${profile?.username ?? 'Alguém'} curtiu sua foto 🌿`
-      })
+    if (!user) return
+    const post = posts.find(p => p.id === postId)
+    const liked = post.post_likes.some(l => l.user_id === user.id)
+    if (liked) {
+      await supabase.from('post_likes').delete().match({ post_id: postId, user_id: user.id })
+    } else {
+      await supabase.from('post_likes').insert({ post_id: postId, user_id: user.id })
+      if (post.user_id !== user.id) {
+        const { data: profile } = await supabase
+          .from('profiles').select('username').eq('id', user.id).single()
+        await supabase.from('notifications').insert({
+          user_id: post.user_id,
+          from_user_id: user.id,
+          type: 'like',
+          post_id: postId,
+          message: `${profile?.username ?? 'Alguém'} curtiu sua foto 🌿`
+        })
+      }
     }
+    loadPosts()
   }
-  loadPosts()
-}
 
   if (loading) return null
   if (!user) return <LoginScreen />
 
   return (
     <div>
-      {/* filtro ativo */}
       {activeTag && (
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: '#EAF3DE', borderRadius: 12, padding: '10px 14px', marginBottom: 16, border: '0.5px solid #C5E4A7' }}>
           <span style={{ fontSize: 14, color: '#27500A', fontWeight: 500 }}>#{activeTag}</span>
