@@ -20,33 +20,65 @@ export default function PostCard({ post, user, onLike, onDelete }) {
 
   return (
     <>
-{lightbox && (
-  <div onClick={() => setLightbox(false)} style={{
-    position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.92)',
-    display: 'flex', alignItems: 'center', justifyContent: 'center',
-    zIndex: 1000, cursor: 'zoom-out', padding: 16
-  }}>
-    <div style={{ position: 'relative', maxWidth: '100%' }} onClick={e => e.stopPropagation()}>
-      <img
-        src={post.image_url}
-        alt="foto ampliada"
-        style={{ maxWidth: '100%', maxHeight: '90vh', borderRadius: 12, objectFit: 'contain', display: 'block' }}
-      />
-      <button
-        onClick={() => setLightbox(false)}
-        style={{
-          position: 'absolute', top: 10, right: 10,
-          background: 'rgba(0,0,0,0.45)',
-          backdropFilter: 'blur(6px)',
-          border: '0.5px solid rgba(255,255,255,0.2)',
-          color: '#fff', width: 32, height: 32, borderRadius: '50%',
-          fontSize: 14, cursor: 'pointer',
-          display: 'flex', alignItems: 'center', justifyContent: 'center'
-        }}>✕</button>
-    </div>
-  </div>
-)}
+      {/* lightbox */}
+      {lightbox && (
+        <div onClick={() => setLightbox(false)} style={{
+          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.92)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          zIndex: 1000, cursor: 'zoom-out', padding: 16
+        }}>
+          <div style={{ position: 'relative', maxWidth: '100%' }} onClick={e => e.stopPropagation()}>
+            <img src={post.image_url} alt="foto ampliada" style={{ maxWidth: '100%', maxHeight: '90vh', borderRadius: 12, objectFit: 'contain', display: 'block' }} />
+            <button onClick={() => setLightbox(false)} style={{
+              position: 'absolute', top: 10, right: 10,
+              background: 'rgba(0,0,0,0.45)', backdropFilter: 'blur(6px)',
+              border: '0.5px solid rgba(255,255,255,0.2)',
+              color: '#fff', width: 32, height: 32, borderRadius: '50%',
+              fontSize: 14, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center'
+            }}>✕</button>
+          </div>
+        </div>
+      )}
 
+      {/* modal de quem curtiu */}
+      {showLikes && (
+        <div onClick={() => setShowLikes(false)} style={{
+          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)',
+          display: 'flex', alignItems: 'flex-end', justifyContent: 'center',
+          zIndex: 1000, padding: 0
+        }}>
+          <div onClick={e => e.stopPropagation()} style={{
+            background: '#fff', borderRadius: '20px 20px 0 0',
+            width: '100%', maxWidth: 390, maxHeight: '60vh',
+            overflow: 'hidden', display: 'flex', flexDirection: 'column'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 16px 12px', borderBottom: '0.5px solid #E2F2D4' }}>
+              <span style={{ fontWeight: 500, fontSize: 15, color: '#27500A' }}>♥ Curtidas ({likeCount})</span>
+              <button onClick={() => setShowLikes(false)} style={{ background: 'none', border: 'none', fontSize: 18, cursor: 'pointer', color: '#888780' }}>✕</button>
+            </div>
+            <div style={{ overflowY: 'auto', padding: '8px 0' }}>
+              {likeCount === 0 && (
+                <p style={{ textAlign: 'center', color: '#888', fontSize: 13, padding: 24 }}>Nenhuma curtida ainda 🌱</p>
+              )}
+              {post.post_likes?.map(like => {
+                const likeInitial = (like.profiles?.username?.[0] ?? '?').toUpperCase()
+                return (
+                  <div key={like.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 16px' }}>
+                    <div style={{ width: 36, height: 36, borderRadius: '50%', background: '#EAF3DE', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 500, color: '#3B6D11', fontSize: 14, flexShrink: 0 }}>
+                      {likeInitial}
+                    </div>
+                    <span style={{ fontSize: 14, color: '#1a1a1a', fontWeight: 500 }}>
+                      {like.profiles?.username ?? 'usuário'}
+                    </span>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* card do post */}
       <div style={{ background: '#fff', borderRadius: 16, border: '0.5px solid #E2F2D4', overflow: 'hidden', marginBottom: 2 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 14px' }}>
           <div style={{ width: 36, height: 36, borderRadius: '50%', background: '#EAF3DE', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 500, color: '#3B6D11', fontSize: 14, flexShrink: 0 }}>
