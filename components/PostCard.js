@@ -122,7 +122,11 @@ export default function PostCard({ post, user, onLike, onDelete, onTagClick }) {
             width: '100%', maxWidth: 390, padding: '20px 16px 32px'
           }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
-              <span style={{ fontWeight: 500, fontSize: 15, color: '#27500A' }}>Editar post</span>
+              <a href={`/perfil/${post.user_id}`} style={{ fontWeight: 500, fontSize: 14, color: '#1a1a1a', flex: 1, textDecoration: 'none' }}
+                onMouseOver={e => e.target.style.color = '#3B6D11'}
+                onMouseOut={e => e.target.style.color = '#1a1a1a'}>
+                {post.profiles?.username ?? 'usuário'}
+              </a>
               <button onClick={() => setEditing(false)} style={{ background: 'none', border: 'none', fontSize: 18, cursor: 'pointer', color: '#888780' }}>✕</button>
             </div>
             {post.image_url && (
