@@ -58,7 +58,7 @@ export default function NavbarWrapper({ children }) {
           {[
             { href: '/', icon: '⊞', label: 'Feed' },
             { href: '/forum', icon: '💬', label: 'Fórum' },
-            ...(user ? [{ href: '/perfil', icon: '🪴', label: 'Jardim' }] : []),
+            ...(user ? [{ href: '/perfil', icon: '🪴', label: 'Meu Jardim' }] : []),
           ].map(({ href, icon, label }) => (
             <Link key={href} href={href} style={{
               display: 'flex', alignItems: 'center', gap: 12,
@@ -147,7 +147,7 @@ export default function NavbarWrapper({ children }) {
               {[
                 { href: '/', icon: '⊞', label: 'Feed' },
                 { href: '/forum', icon: '💬', label: 'Fórum' },
-                ...(user ? [{ href: '/perfil', icon: '🪴', label: 'Jardim' }] : []),
+                ...(user ? [{ href: '/perfil', icon: '🪴', label: 'Meu Jardim' }] : []),
               ].map(({ href, icon, label }) => (
                 <Link key={href} href={href} onClick={() => setMenuOpen(false)} style={{
                   display: 'flex', alignItems: 'center', gap: 12,
