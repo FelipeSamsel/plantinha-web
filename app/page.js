@@ -25,7 +25,7 @@ export default function FeedPage() {
   async function loadPosts() {
     let q = supabase
       .from('posts')
-      .select('*, profiles(username), post_likes(id, user_id, profiles(username)), post_tags(tag)')
+      .select('*, profiles(username, avatar_url), post_likes(id, user_id, profiles(username, avatar_url)), post_tags(tag)')
       .order('created_at', { ascending: false })
       .limit(30)
 
