@@ -19,6 +19,18 @@ function Caption({ text, onTagClick }) {
   )
 }
 
+function Avatar({ url, name, size = 36 }) {
+  const ini = (name?.[0] ?? '?').toUpperCase()
+  if (url) return (
+    <img src={url} alt={name} style={{ width: size, height: size, borderRadius: '50%', objectFit: 'cover', flexShrink: 0 }} />
+  )
+  return (
+    <div style={{ width: size, height: size, borderRadius: '50%', background: '#EAF3DE', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 500, color: '#3B6D11', fontSize: size * 0.38, flexShrink: 0 }}>
+      {ini}
+    </div>
+  )
+}
+
 export default function PostCard({ post, user, onLike, onDelete, onTagClick }) {
   const [lightbox, setLightbox] = useState(false)
   const [showLikes, setShowLikes] = useState(false)
@@ -31,8 +43,13 @@ export default function PostCard({ post, user, onLike, onDelete, onTagClick }) {
   const [saving, setSaving] = useState(false)
   const liked = user && post.post_likes?.some(l => l.user_id === user.id)
   const isOwner = user && user.id === post.user_id
-  const initial = (post.profiles?.username?.[0] ?? '?').toUpperCase()
   const likeCount = post.post_likes?.length ?? 0
+
+  // comentários do post já carregados, ordenados por data
+  const previewComments = (post.comments ?? [])
+    .sort((a, b) => new Date(a.created_at) - new Date(b.created_at))
+    .slice(0, 2)
+  const totalComments = post.comments?.length ?? 0
 
   useEffect(() => {
     if (showComments) loadComments()
@@ -113,18 +130,6 @@ export default function PostCard({ post, user, onLike, onDelete, onTagClick }) {
     boxShadow: '0 8px 40px rgba(0,0,0,0.15)'
   }
 
-  function Avatar({ url, name, size = 36 }) {
-    const ini = (name?.[0] ?? '?').toUpperCase()
-    if (url) return (
-      <img src={url} alt={name} style={{ width: size, height: size, borderRadius: '50%', objectFit: 'cover', flexShrink: 0 }} />
-    )
-    return (
-      <div style={{ width: size, height: size, borderRadius: '50%', background: '#EAF3DE', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 500, color: '#3B6D11', fontSize: size * 0.38, flexShrink: 0 }}>
-        {ini}
-      </div>
-    )
-  }
-
   return (
     <>
       {lightbox && (
@@ -170,10 +175,9 @@ export default function PostCard({ post, user, onLike, onDelete, onTagClick }) {
         <div onClick={() => setShowComments(false)} style={overlayStyle}>
           <div onClick={e => e.stopPropagation()} style={{ ...modalStyle, maxHeight: '75vh' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 16px 12px', borderBottom: '0.5px solid #E2F2D4', flexShrink: 0 }}>
-              <span style={{ fontWeight: 500, fontSize: 15, color: '#27500A' }}>💬 Comentários</span>
+              <span style={{ fontWeight: 500, fontSize: 15, color: '#27500A' }}>💬 Comentários ({totalComments})</span>
               <button onClick={() => setShowComments(false)} style={{ background: 'none', border: 'none', fontSize: 18, cursor: 'pointer', color: '#888780' }}>✕</button>
             </div>
-
             <div style={{ overflowY: 'auto', flex: 1, padding: '8px 0' }}>
               {comments.length === 0 && (
                 <p style={{ textAlign: 'center', color: '#888', fontSize: 13, padding: 24 }}>Nenhum comentário ainda. Seja o primeiro! 🌱</p>
@@ -189,7 +193,8 @@ export default function PostCard({ post, user, onLike, onDelete, onTagClick }) {
                           {comment.profiles?.username ?? 'usuário'}
                         </a>
                         {isCommentOwner && (
-                          <button onClick={() => deleteComment(comment.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#B4B2A9', fontSize: 11, padding: 0 }}
+                          <button onClick={() => deleteComment(comment.id)}
+                            style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#B4B2A9', fontSize: 11, padding: 0 }}
                             onMouseOver={e => e.target.style.color = '#993C1D'}
                             onMouseOut={e => e.target.style.color = '#B4B2A9'}>
                             excluir
@@ -202,7 +207,6 @@ export default function PostCard({ post, user, onLike, onDelete, onTagClick }) {
                 )
               })}
             </div>
-
             {user && (
               <div style={{ padding: '12px 16px', borderTop: '0.5px solid #E2F2D4', display: 'flex', gap: 8, flexShrink: 0 }}>
                 <input
@@ -282,19 +286,22 @@ export default function PostCard({ post, user, onLike, onDelete, onTagClick }) {
         </div>
 
         {post.image_url && (
-          <img src={post.image_url} alt="post" onClick={() => setLightbox(true)} style={{ width: '100%', maxHeight: 500, objectFit: 'contain', background: '#F4FAF0', cursor: 'zoom-in', display: 'block' }} />
+          <img src={post.image_url} alt="post" onClick={() => setLightbox(true)}
+            style={{ width: '100%', maxHeight: 500, objectFit: 'contain', background: '#F4FAF0', cursor: 'zoom-in', display: 'block' }} />
         )}
 
         <div style={{ padding: '12px 14px' }}>
           <Caption text={post.caption} onTagClick={onTagClick ?? (() => {})} />
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+
+          {/* ações */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 10 }}>
             <button onClick={() => onLike(post.id)} style={{ background: 'none', border: 'none', cursor: user ? 'pointer' : 'default', display: 'flex', alignItems: 'center', gap: 6, padding: 0 }}>
               <span style={{ fontSize: 18, color: liked ? '#3B6D11' : '#B4B2A9' }}>♥</span>
               <span style={{ fontSize: 13, color: '#888780' }}>{likeCount}</span>
             </button>
             <button onClick={() => setShowComments(true)} style={{ background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5, padding: 0 }}>
               <span style={{ fontSize: 16, color: '#B4B2A9' }}>💬</span>
-              <span style={{ fontSize: 13, color: '#888780' }}>comentar</span>
+              <span style={{ fontSize: 13, color: '#888780' }}>{totalComments > 0 ? `${totalComments} comentários` : 'comentar'}</span>
             </button>
             {isOwner && likeCount > 0 && (
               <button onClick={() => setShowLikes(true)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 12, color: '#3B6D11', padding: 0, textDecoration: 'underline' }}>
@@ -302,6 +309,28 @@ export default function PostCard({ post, user, onLike, onDelete, onTagClick }) {
               </button>
             )}
           </div>
+
+          {/* preview dos 2 primeiros comentários */}
+          {previewComments.length > 0 && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, borderTop: '0.5px solid #F0F7EC', paddingTop: 10 }}>
+              {previewComments.map(c => (
+                <div key={c.id} style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+                  <Avatar url={c.profiles?.avatar_url} name={c.profiles?.username} size={24} />
+                  <p style={{ fontSize: 13, color: '#333', lineHeight: 1.4, margin: 0 }}>
+                    <a href={`/perfil/${c.user_id}`} style={{ fontWeight: 500, color: '#1a1a1a', textDecoration: 'none', marginRight: 4 }}>
+                      {c.profiles?.username ?? 'usuário'}
+                    </a>
+                    {c.body}
+                  </p>
+                </div>
+              ))}
+              {totalComments > 2 && (
+                <button onClick={() => setShowComments(true)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 12, color: '#888780', padding: 0, textAlign: 'left' }}>
+                  Ver todos os {totalComments} comentários
+                </button>
+              )}
+            </div>
+          )}
         </div>
       </div>
     </>
