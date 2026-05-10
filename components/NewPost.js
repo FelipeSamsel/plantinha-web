@@ -1,37 +1,27 @@
 'use client'
-import { useState, useCallback } from 'react'
+import { useState, useRef, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
-import Cropper from 'react-easy-crop'
-
-function getCroppedImg(imageSrc, croppedAreaPixels) {
-  return new Promise((resolve) => {
-    const image = new Image()
-    image.src = imageSrc
-    image.onload = () => {
-      const canvas = document.createElement('canvas')
-      canvas.width = croppedAreaPixels.width
-      canvas.height = croppedAreaPixels.height
-      const ctx = canvas.getContext('2d')
-      ctx.drawImage(
-        image,
-        croppedAreaPixels.x, croppedAreaPixels.y,
-        croppedAreaPixels.width, croppedAreaPixels.height,
-        0, 0,
-        croppedAreaPixels.width, croppedAreaPixels.height
-      )
-      canvas.toBlob(blob => resolve(blob), 'image/jpeg', 0.85)
-    }
-  })
-}
-
-const ASPECTS = [
-  { label: '1:1', value: 1 },
-  { label: '4:3', value: 4/3 },
-  { label: '3:4', value: 3/4 },
-  { label: 'livre', value: null },
-]
+import ReactCrop from 'react-image-crop'
+import 'react-image-crop/dist/ReactCrop.css'
 
 const TAGS = ['Suculenta', 'Cacto', 'Monstera', 'Orquídea', 'Samambaia', 'Palmeira']
+
+async function getCroppedBlob(imgEl, crop) {
+  const canvas = document.createElement('canvas')
+  const scaleX = imgEl.naturalWidth / imgEl.width
+  const scaleY = imgEl.naturalHeight / imgEl.height
+  canvas.width = crop.width * scaleX
+  canvas.height = crop.height * scaleY
+  const ctx = canvas.getContext('2d')
+  ctx.drawImage(
+    imgEl,
+    crop.x * scaleX, crop.y * scaleY,
+    crop.width * scaleX, crop.height * scaleY,
+    0, 0,
+    crop.width * scaleX, crop.height * scaleY
+  )
+  return new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.88))
+}
 
 export default function NewPost({ user, onPost }) {
   const [caption, setCaption] = useState('')
@@ -40,28 +30,23 @@ export default function NewPost({ user, onPost }) {
   const [croppedPreview, setCroppedPreview] = useState(null)
   const [tags, setTags] = useState([])
   const [loading, setLoading] = useState(false)
-  const [step, setStep] = useState('select') // 'select' | 'crop' | 'details'
-
-  const [crop, setCrop] = useState({ x: 0, y: 0 })
-  const [zoom, setZoom] = useState(1)
-  const [aspect, setAspect] = useState(1)
-  const [croppedAreaPixels, setCroppedAreaPixels] = useState(null)
-  const [freeAspect, setFreeAspect] = useState(false)
+  const [step, setStep] = useState('select')
+  const [crop, setCrop] = useState({ unit: '%', x: 5, y: 5, width: 90, height: 90 })
+  const [aspect, setAspect] = useState(undefined)
+  const imgRef = useRef(null)
 
   function onFileChange(e) {
     const f = e.target.files[0]
     if (!f) return
-    const url = URL.createObjectURL(f)
-    setRawImage(url)
+    setRawImage(URL.createObjectURL(f))
+    setCrop({ unit: '%', x: 5, y: 5, width: 90, height: 90 })
+    setAspect(undefined)
     setStep('crop')
   }
 
-  const onCropComplete = useCallback((_, pixels) => {
-    setCroppedAreaPixels(pixels)
-  }, [])
-
   async function confirmCrop() {
-    const blob = await getCroppedImg(rawImage, croppedAreaPixels)
+    if (!imgRef.current || !crop.width || !crop.height) return
+    const blob = await getCroppedBlob(imgRef.current, crop)
     setCroppedBlob(blob)
     setCroppedPreview(URL.createObjectURL(blob))
     setStep('details')
@@ -69,6 +54,12 @@ export default function NewPost({ user, onPost }) {
 
   function toggleTag(t) {
     setTags(prev => prev.includes(t) ? prev.filter(x => x !== t) : [...prev, t])
+  }
+
+  function reset() {
+    setRawImage(null); setCroppedBlob(null); setCroppedPreview(null)
+    setStep('select'); setCrop({ unit: '%', x: 5, y: 5, width: 90, height: 90 })
+    setTags([]); setCaption('')
   }
 
   async function publish() {
@@ -93,85 +84,86 @@ export default function NewPost({ user, onPost }) {
     finally { setLoading(false) }
   }
 
-  function reset() {
-    setRawImage(null); setCroppedBlob(null); setCroppedPreview(null)
-    setStep('select'); setCrop({ x: 0, y: 0 }); setZoom(1)
-  }
+  const ASPECTS = [
+    { label: 'livre', value: undefined },
+    { label: '1:1', value: 1 },
+    { label: '4:3', value: 4/3 },
+    { label: '3:4', value: 3/4 },
+    { label: '16:9', value: 16/9 },
+  ]
 
   return (
     <div>
 
-      {/* STEP 1 — selecionar foto */}
       {step === 'select' && (
-        <label style={{ display: 'block', border: '1px dashed #C5E4A7', borderRadius: 12, padding: 32, textAlign: 'center', cursor: 'pointer', background: '#fff' }}>
-          <div style={{ fontSize: 32, marginBottom: 8 }}>📷</div>
+        <label style={{ display: 'block', border: '1px dashed #C5E4A7', borderRadius: 12, padding: 40, textAlign: 'center', cursor: 'pointer', background: '#fff' }}>
+          <div style={{ fontSize: 36, marginBottom: 10 }}>📷</div>
           <span style={{ color: '#888780', fontSize: 13 }}>Toque para selecionar uma foto</span>
           <input type="file" accept="image/*" onChange={onFileChange} style={{ display: 'none' }} />
         </label>
       )}
 
-      {/* STEP 2 — cortar */}
       {step === 'crop' && (
         <div>
-          {/* seletor de proporção */}
-          <div style={{ display: 'flex', gap: 6, marginBottom: 10, flexWrap: 'wrap' }}>
+          <p style={{ fontSize: 12, color: '#888780', marginBottom: 10, textAlign: 'center' }}>
+            Arraste os cantos para cortar livremente
+          </p>
+
+          {/* proporções opcionais */}
+          <div style={{ display: 'flex', gap: 6, marginBottom: 12, flexWrap: 'wrap', justifyContent: 'center' }}>
             {ASPECTS.map(a => (
               <button key={a.label} onClick={() => {
-                if (a.value === null) { setFreeAspect(true) }
-                else { setFreeAspect(false); setAspect(a.value) }
+                setAspect(a.value)
+                setCrop({ unit: '%', x: 5, y: 5, width: 90, height: 90 })
               }} style={{
                 padding: '5px 12px', borderRadius: 20, fontSize: 12, cursor: 'pointer',
                 border: '0.5px solid #C5E4A7',
-                background: (a.value === null ? freeAspect : (!freeAspect && aspect === a.value)) ? '#3B6D11' : '#fff',
-                color: (a.value === null ? freeAspect : (!freeAspect && aspect === a.value)) ? '#EAF3DE' : '#888780',
+                background: aspect === a.value ? '#3B6D11' : '#fff',
+                color: aspect === a.value ? '#EAF3DE' : '#888780',
               }}>
                 {a.label}
               </button>
             ))}
           </div>
 
-          {/* área de crop */}
-          <div style={{ position: 'relative', width: '100%', height: 280, borderRadius: 12, overflow: 'hidden', background: '#111' }}>
-            <Cropper
-              image={rawImage}
+          <div style={{ borderRadius: 12, overflow: 'hidden', background: '#111', marginBottom: 12 }}>
+            <ReactCrop
               crop={crop}
-              zoom={zoom}
-              aspect={freeAspect ? undefined : aspect}
-              onCropChange={setCrop}
-              onZoomChange={setZoom}
-              onCropComplete={onCropComplete}
-            />
-          </div>
-
-          {/* zoom */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, margin: '10px 0' }}>
-            <span style={{ fontSize: 12, color: '#888780' }}>zoom</span>
-            <input type="range" min={1} max={3} step={0.01} value={zoom}
-              onChange={e => setZoom(Number(e.target.value))}
-              style={{ flex: 1, accentColor: '#3B6D11' }} />
+              onChange={c => setCrop(c)}
+              aspect={aspect}
+              minWidth={40}
+              minHeight={40}
+              style={{ width: '100%' }}
+            >
+              <img
+                ref={imgRef}
+                src={rawImage}
+                alt="para cortar"
+                style={{ width: '100%', display: 'block', maxHeight: 380, objectFit: 'contain' }}
+              />
+            </ReactCrop>
           </div>
 
           <div style={{ display: 'flex', gap: 8 }}>
-            <button onClick={reset} style={{ flex: 1, background: '#fff', border: '0.5px solid #C5E4A7', borderRadius: 10, padding: '11px 0', fontSize: 13, cursor: 'pointer', color: '#888780' }}>
+            <button onClick={reset} style={{ flex: 1, background: '#fff', border: '0.5px solid #C5E4A7', borderRadius: 10, padding: '11px 0', fontSize: 13, cursor: 'pointer', color: '#888780', fontFamily: 'inherit' }}>
               Cancelar
             </button>
-            <button onClick={confirmCrop} style={{ flex: 1, background: '#3B6D11', border: 'none', borderRadius: 10, padding: '11px 0', fontSize: 13, fontWeight: 500, cursor: 'pointer', color: '#EAF3DE' }}>
-              Confirmar corte
+            <button onClick={confirmCrop} style={{ flex: 1, background: '#3B6D11', border: 'none', borderRadius: 10, padding: '11px 0', fontSize: 13, fontWeight: 500, cursor: 'pointer', color: '#EAF3DE', fontFamily: 'inherit' }}>
+              Confirmar corte ✓
             </button>
           </div>
         </div>
       )}
 
-      {/* STEP 3 — detalhes */}
       {step === 'details' && (
         <div>
           <div style={{ position: 'relative', marginBottom: 12 }}>
-            <img src={croppedPreview} alt="preview" style={{ width: '100%', maxHeight: 260, objectFit: 'contain', borderRadius: 12, background: '#F4FAF0', display: 'block' }} />
+            <img src={croppedPreview} alt="preview" style={{ width: '100%', maxHeight: 280, objectFit: 'contain', borderRadius: 12, background: '#F4FAF0', display: 'block' }} />
             <button onClick={() => setStep('crop')} style={{
               position: 'absolute', top: 8, right: 8,
               background: 'rgba(0,0,0,0.45)', backdropFilter: 'blur(6px)',
               border: 'none', color: '#fff', borderRadius: 20,
-              padding: '4px 10px', fontSize: 11, cursor: 'pointer'
+              padding: '5px 12px', fontSize: 11, cursor: 'pointer'
             }}>✏️ editar corte</button>
           </div>
 
@@ -187,7 +179,8 @@ export default function NewPost({ user, onPost }) {
                 border: '0.5px solid #C5E4A7',
                 background: tags.includes(t) ? '#EAF3DE' : '#fff',
                 color: tags.includes(t) ? '#3B6D11' : '#888780',
-                fontWeight: tags.includes(t) ? 500 : 400
+                fontWeight: tags.includes(t) ? 500 : 400,
+                fontFamily: 'inherit'
               }}>
                 {t}
               </button>
@@ -195,10 +188,10 @@ export default function NewPost({ user, onPost }) {
           </div>
 
           <div style={{ display: 'flex', gap: 8 }}>
-            <button onClick={reset} style={{ flex: 1, background: '#fff', border: '0.5px solid #C5E4A7', borderRadius: 10, padding: '11px 0', fontSize: 13, cursor: 'pointer', color: '#888780' }}>
+            <button onClick={reset} style={{ flex: 1, background: '#fff', border: '0.5px solid #C5E4A7', borderRadius: 10, padding: '11px 0', fontSize: 13, cursor: 'pointer', color: '#888780', fontFamily: 'inherit' }}>
               Cancelar
             </button>
-            <button onClick={publish} disabled={loading} style={{ flex: 2, background: '#3B6D11', border: 'none', borderRadius: 10, padding: '11px 0', fontSize: 13, fontWeight: 500, cursor: 'pointer', color: '#EAF3DE' }}>
+            <button onClick={publish} disabled={loading} style={{ flex: 2, background: '#3B6D11', border: 'none', borderRadius: 10, padding: '11px 0', fontSize: 13, fontWeight: 500, cursor: 'pointer', color: '#EAF3DE', fontFamily: 'inherit' }}>
               {loading ? 'Publicando...' : 'Publicar 🌱'}
             </button>
           </div>
