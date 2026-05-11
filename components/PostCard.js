@@ -21,7 +21,9 @@ function Caption({ text, onTagClick }) {
 
 function Avatar({ url, name, size = 36 }) {
   const ini = (name?.[0] ?? '?').toUpperCase()
-  if (url) return <img src={url} alt={name} style={{ width: size, height: size, borderRadius: '50%', objectFit: 'cover', flexShrink: 0 }} />
+  if (url) return (
+    <img src={url} alt={name} style={{ width: size, height: size, borderRadius: '50%', objectFit: 'cover', flexShrink: 0 }} />
+  )
   return (
     <div style={{ width: size, height: size, borderRadius: '50%', background: '#EAF3DE', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 500, color: '#3B6D11', fontSize: size * 0.38, flexShrink: 0 }}>
       {ini}
@@ -29,13 +31,18 @@ function Avatar({ url, name, size = 36 }) {
   )
 }
 
-function CommentItem({ comment, user, onDelete, onReply }) {
+function CommentItem({ comment, user, onDelete }) {
   const [showReplies, setShowReplies] = useState(false)
   const [replies, setReplies] = useState([])
   const [newReply, setNewReply] = useState('')
   const [replying, setReplying] = useState(false)
   const [loadingReply, setLoadingReply] = useState(false)
   const isOwner = user && user.id === comment.user_id
+  const replyCount = comment.comment_replies?.length ?? 0
+
+  useEffect(() => {
+    if (showReplies) loadReplies()
+  }, [showReplies])
 
   async function loadReplies() {
     const { data } = await supabase
@@ -54,7 +61,6 @@ function CommentItem({ comment, user, onDelete, onReply }) {
       user_id: user.id,
       body: newReply.trim()
     })
-    // notifica dono do comentário
     if (comment.user_id !== user.id) {
       const { data: profile } = await supabase
         .from('profiles').select('username').eq('id', user.id).single()
@@ -78,12 +84,6 @@ function CommentItem({ comment, user, onDelete, onReply }) {
     loadReplies()
   }
 
-  useEffect(() => {
-    if (showReplies) loadReplies()
-  }, [showReplies])
-
-  const replyCount = comment.comment_replies?.length ?? 0
-
   return (
     <div style={{ display: 'flex', gap: 10, padding: '10px 16px', alignItems: 'flex-start' }}>
       <Avatar url={comment.profiles?.avatar_url} name={comment.profiles?.username} size={32} />
@@ -103,7 +103,6 @@ function CommentItem({ comment, user, onDelete, onReply }) {
         </div>
         <p style={{ fontSize: 13, color: '#333', lineHeight: 1.4, marginBottom: 6 }}>{comment.body}</p>
 
-        {/* ações do comentário */}
         <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
           {user && (
             <button onClick={() => setReplying(!replying)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 11, color: '#888780', padding: 0 }}>
@@ -117,7 +116,6 @@ function CommentItem({ comment, user, onDelete, onReply }) {
           )}
         </div>
 
-        {/* input de resposta */}
         {replying && (
           <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
             <input
@@ -129,9 +127,8 @@ function CommentItem({ comment, user, onDelete, onReply }) {
               style={{ flex: 1, border: '0.5px solid #C5E4A7', borderRadius: 20, padding: '7px 12px', fontSize: 12, outline: 'none', fontFamily: 'inherit', background: '#F4FAF0' }}
             />
             <button onClick={sendReply} disabled={loadingReply || !newReply.trim()} style={{
-              background: newReply.trim() ? '#3B6D11' : '#C5E4A7',
-              border: 'none', borderRadius: 20, padding: '7px 12px',
-              fontSize: 12, fontWeight: 500, color: '#EAF3DE',
+              background: newReply.trim() ? '#3B6D11' : '#C5E4A7', border: 'none', borderRadius: 20,
+              padding: '7px 12px', fontSize: 12, fontWeight: 500, color: '#EAF3DE',
               cursor: newReply.trim() ? 'pointer' : 'default', fontFamily: 'inherit'
             }}>
               {loadingReply ? '...' : '↩'}
@@ -140,7 +137,6 @@ function CommentItem({ comment, user, onDelete, onReply }) {
           </div>
         )}
 
-        {/* respostas */}
         {showReplies && replies.length > 0 && (
           <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 8, paddingLeft: 8, borderLeft: '2px solid #EAF3DE' }}>
             {replies.map(reply => (
@@ -301,23 +297,15 @@ export default function PostCard({ post, user, onLike, onDelete, onTagClick }) {
             <div style={{ overflowY: 'auto', flex: 1 }}>
               {comments.length === 0 && <p style={{ textAlign: 'center', color: '#888', fontSize: 13, padding: 24 }}>Nenhum comentário ainda. Seja o primeiro! 🌱</p>}
               {comments.map(comment => (
-                <CommentItem
-                  key={comment.id}
-                  comment={comment}
-                  user={user}
-                  onDelete={deleteComment}
-                />
+                <CommentItem key={comment.id} comment={comment} user={user} onDelete={deleteComment} />
               ))}
             </div>
             {user && (
               <div style={{ padding: '12px 16px', borderTop: '0.5px solid #E2F2D4', display: 'flex', gap: 8, flexShrink: 0 }}>
-                <input
-                  value={newComment}
-                  onChange={e => setNewComment(e.target.value)}
+                <input value={newComment} onChange={e => setNewComment(e.target.value)}
                   onKeyDown={e => e.key === 'Enter' && sendComment()}
                   placeholder="Adicione um comentário..."
-                  style={{ flex: 1, border: '0.5px solid #C5E4A7', borderRadius: 20, padding: '9px 14px', fontSize: 13, outline: 'none', fontFamily: 'inherit', background: '#F4FAF0' }}
-                />
+                  style={{ flex: 1, border: '0.5px solid #C5E4A7', borderRadius: 20, padding: '9px 14px', fontSize: 13, outline: 'none', fontFamily: 'inherit', background: '#F4FAF0' }} />
                 <button onClick={sendComment} disabled={loadingComment || !newComment.trim()} style={{
                   background: newComment.trim() ? '#3B6D11' : '#C5E4A7', border: 'none', borderRadius: 20, padding: '9px 16px',
                   fontSize: 13, fontWeight: 500, color: '#EAF3DE', cursor: newComment.trim() ? 'pointer' : 'default', fontFamily: 'inherit'
@@ -395,14 +383,22 @@ export default function PostCard({ post, user, onLike, onDelete, onTagClick }) {
           {previewComments.length > 0 && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6, borderTop: '0.5px solid #F0F7EC', paddingTop: 10 }}>
               {previewComments.map(c => (
-                <div key={c.id} style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+                <div key={c.id} style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                   <Avatar url={c.profiles?.avatar_url} name={c.profiles?.username} size={24} />
-                  <p style={{ fontSize: 13, color: '#333', lineHeight: 1.4, margin: 0 }}>
+                  <p style={{ fontSize: 13, color: '#333', lineHeight: 1.4, margin: 0, flex: 1 }}>
                     <a href={`/perfil/${c.user_id}`} style={{ fontWeight: 500, color: '#1a1a1a', textDecoration: 'none', marginRight: 4 }}>
                       {c.profiles?.username ?? 'usuário'}
                     </a>
                     {c.body}
                   </p>
+                  {user && (
+                    <button onClick={() => setShowComments(true)}
+                      style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 11, color: '#B4B2A9', padding: '0 4px', flexShrink: 0 }}
+                      onMouseOver={e => e.target.style.color = '#3B6D11'}
+                      onMouseOut={e => e.target.style.color = '#B4B2A9'}>
+                      responder
+                    </button>
+                  )}
                 </div>
               ))}
               {totalComments > 2 && (
