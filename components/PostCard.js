@@ -287,36 +287,98 @@ export default function PostCard({ post, user, onLike, onDelete, onTagClick }) {
         </div>
       )}
 
-      {showComments && (
-        <div onClick={() => setShowComments(false)} style={overlayStyle}>
-          <div onClick={e => e.stopPropagation()} style={{ ...modalStyle, maxHeight: '80vh' }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 16px 12px', borderBottom: '0.5px solid #E2F2D4', flexShrink: 0 }}>
-              <span style={{ fontWeight: 500, fontSize: 15, color: '#27500A' }}>💬 Comentários ({totalComments})</span>
-              <button onClick={() => setShowComments(false)} style={{ background: 'none', border: 'none', fontSize: 18, cursor: 'pointer', color: '#888780' }}>✕</button>
-            </div>
-            <div style={{ overflowY: 'auto', flex: 1 }}>
-              {comments.length === 0 && <p style={{ textAlign: 'center', color: '#888', fontSize: 13, padding: 24 }}>Nenhum comentário ainda. Seja o primeiro! 🌱</p>}
-              {comments.map(comment => (
-                <CommentItem key={comment.id} comment={comment} user={user} onDelete={deleteComment} />
-              ))}
-            </div>
-            {user && (
-              <div style={{ padding: '12px 16px', borderTop: '0.5px solid #E2F2D4', display: 'flex', gap: 8, flexShrink: 0 }}>
-                <input value={newComment} onChange={e => setNewComment(e.target.value)}
-                  onKeyDown={e => e.key === 'Enter' && sendComment()}
-                  placeholder="Adicione um comentário..."
-                  style={{ flex: 1, border: '0.5px solid #C5E4A7', borderRadius: 20, padding: '9px 14px', fontSize: 13, outline: 'none', fontFamily: 'inherit', background: '#F4FAF0' }} />
-                <button onClick={sendComment} disabled={loadingComment || !newComment.trim()} style={{
-                  background: newComment.trim() ? '#3B6D11' : '#C5E4A7', border: 'none', borderRadius: 20, padding: '9px 16px',
-                  fontSize: 13, fontWeight: 500, color: '#EAF3DE', cursor: newComment.trim() ? 'pointer' : 'default', fontFamily: 'inherit'
-                }}>
-                  {loadingComment ? '...' : 'Enviar'}
-                </button>
-              </div>
-            )}
+{showComments && (
+  <div onClick={() => setShowComments(false)} style={{
+    position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)',
+    display: 'flex', alignItems: 'center', justifyContent: 'center',
+    zIndex: 1000, padding: 20
+  }}>
+    <div onClick={e => e.stopPropagation()} style={{
+      display: 'flex', borderRadius: 20, overflow: 'hidden',
+      width: '100%', maxWidth: 860, maxHeight: '85vh',
+      boxShadow: '0 8px 40px rgba(0,0,0,0.4)'
+    }}>
+      {/* lado esquerdo — foto */}
+      <div style={{ flex: 1, background: '#000', display: 'flex', alignItems: 'center', justifyContent: 'center', minWidth: 0 }}>
+        {post.image_url && (
+          <img src={post.image_url} alt="post" style={{ width: '100%', height: '100%', objectFit: 'contain', maxHeight: '85vh' }} />
+        )}
+      </div>
+
+      {/* lado direito — comentários */}
+      <div style={{ width: 340, background: '#fff', display: 'flex', flexDirection: 'column', flexShrink: 0 }}>
+        {/* header */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 16px', borderBottom: '0.5px solid #E2F2D4', flexShrink: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            {post.profiles?.avatar_url
+              ? <img src={post.profiles.avatar_url} alt="" style={{ width: 32, height: 32, borderRadius: '50%', objectFit: 'cover' }} />
+              : <div style={{ width: 32, height: 32, borderRadius: '50%', background: '#EAF3DE', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 500, color: '#3B6D11', fontSize: 13 }}>
+                  {(post.profiles?.username?.[0] ?? '?').toUpperCase()}
+                </div>
+            }
+            <a href={`/perfil/${post.user_id}`} style={{ fontWeight: 500, fontSize: 13, color: '#1a1a1a', textDecoration: 'none' }}>
+              {post.profiles?.username ?? 'usuário'}
+            </a>
           </div>
+          <button onClick={() => setShowComments(false)} style={{ background: 'none', border: 'none', fontSize: 18, cursor: 'pointer', color: '#888780' }}>✕</button>
         </div>
-      )}
+
+        {/* legenda */}
+        {post.caption && (
+          <div style={{ padding: '12px 16px', borderBottom: '0.5px solid #F0F7EC', flexShrink: 0 }}>
+            <p style={{ fontSize: 13, color: '#333', lineHeight: 1.5, margin: 0 }}>
+              <span style={{ fontWeight: 500, marginRight: 6 }}>{post.profiles?.username}</span>
+              {post.caption}
+            </p>
+          </div>
+        )}
+
+        {/* lista de comentários */}
+        <div style={{ overflowY: 'auto', flex: 1 }}>
+          {comments.length === 0 && (
+            <p style={{ textAlign: 'center', color: '#888', fontSize: 13, padding: 24 }}>Nenhum comentário ainda. Seja o primeiro! 🌱</p>
+          )}
+          {comments.map(comment => (
+            <CommentItem key={comment.id} comment={comment} user={user} onDelete={deleteComment} />
+          ))}
+        </div>
+
+        {/* likes */}
+        <div style={{ padding: '10px 16px', borderTop: '0.5px solid #F0F7EC', flexShrink: 0, display: 'flex', alignItems: 'center', gap: 12 }}>
+          <button onClick={() => onLike(post.id)} style={{ background: 'none', border: 'none', cursor: user ? 'pointer' : 'default', display: 'flex', alignItems: 'center', gap: 5, padding: 0 }}>
+            <span style={{ fontSize: 18, color: liked ? '#3B6D11' : '#B4B2A9' }}>♥</span>
+            <span style={{ fontSize: 13, color: '#888780' }}>{likeCount}</span>
+          </button>
+          {isOwner && likeCount > 0 && (
+            <button onClick={() => { setShowComments(false); setShowLikes(true) }} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 12, color: '#3B6D11', padding: 0, textDecoration: 'underline' }}>
+              ver quem curtiu
+            </button>
+          )}
+        </div>
+
+        {/* input de comentário */}
+        {user && (
+          <div style={{ padding: '12px 16px', borderTop: '0.5px solid #E2F2D4', display: 'flex', gap: 8, flexShrink: 0 }}>
+            <input
+              value={newComment}
+              onChange={e => setNewComment(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && sendComment()}
+              placeholder="Adicione um comentário..."
+              style={{ flex: 1, border: '0.5px solid #C5E4A7', borderRadius: 20, padding: '9px 14px', fontSize: 13, outline: 'none', fontFamily: 'inherit', background: '#F4FAF0' }}
+            />
+            <button onClick={sendComment} disabled={loadingComment || !newComment.trim()} style={{
+              background: newComment.trim() ? '#3B6D11' : '#C5E4A7', border: 'none', borderRadius: 20,
+              padding: '9px 16px', fontSize: 13, fontWeight: 500, color: '#EAF3DE',
+              cursor: newComment.trim() ? 'pointer' : 'default', fontFamily: 'inherit'
+            }}>
+              {loadingComment ? '...' : 'Enviar'}
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  </div>
+)}
 
       {editing && (
         <div onClick={() => setEditing(false)} style={overlayStyle}>
