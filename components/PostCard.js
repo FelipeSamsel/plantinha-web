@@ -168,7 +168,6 @@ function CommentItem({ comment, user, onDelete }) {
 }
 
 export default function PostCard({ post, user, onLike, onDelete, onTagClick }) {
-  const [lightbox, setLightbox] = useState(false)
   const [showLikes, setShowLikes] = useState(false)
   const [editing, setEditing] = useState(false)
   const [showComments, setShowComments] = useState(false)
@@ -258,15 +257,6 @@ export default function PostCard({ post, user, onLike, onDelete, onTagClick }) {
 
   return (
     <>
-      {lightbox && (
-        <div onClick={() => setLightbox(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.92)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, cursor: 'zoom-out', padding: 16 }}>
-          <div style={{ position: 'relative', maxWidth: '100%' }} onClick={e => e.stopPropagation()}>
-            <img src={post.image_url} alt="foto ampliada" style={{ maxWidth: '100%', maxHeight: '90vh', borderRadius: 12, objectFit: 'contain', display: 'block' }} />
-            <button onClick={() => setLightbox(false)} style={{ position: 'absolute', top: 10, right: 10, background: 'rgba(0,0,0,0.45)', backdropFilter: 'blur(6px)', border: '0.5px solid rgba(255,255,255,0.2)', color: '#fff', width: 32, height: 32, borderRadius: '50%', fontSize: 14, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>✕</button>
-          </div>
-        </div>
-      )}
-
       {showLikes && (
         <div onClick={() => setShowLikes(false)} style={overlayStyle}>
           <div onClick={e => e.stopPropagation()} style={{ ...modalStyle, maxHeight: '60vh', overflow: 'hidden' }}>
@@ -307,15 +297,9 @@ export default function PostCard({ post, user, onLike, onDelete, onTagClick }) {
 
             {/* lado direito — comentários */}
             <div style={{ width: 340, background: '#fff', display: 'flex', flexDirection: 'column', flexShrink: 0 }}>
-              {/* header */}
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 16px', borderBottom: '0.5px solid #E2F2D4', flexShrink: 0 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  {post.profiles?.avatar_url
-                    ? <img src={post.profiles.avatar_url} alt="" style={{ width: 32, height: 32, borderRadius: '50%', objectFit: 'cover' }} />
-                    : <div style={{ width: 32, height: 32, borderRadius: '50%', background: '#EAF3DE', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 500, color: '#3B6D11', fontSize: 13 }}>
-                      {(post.profiles?.username?.[0] ?? '?').toUpperCase()}
-                    </div>
-                  }
+                  <Avatar url={post.profiles?.avatar_url} name={post.profiles?.username} size={32} />
                   <a href={`/perfil/${post.user_id}`} style={{ fontWeight: 500, fontSize: 13, color: '#1a1a1a', textDecoration: 'none' }}>
                     {post.profiles?.username ?? 'usuário'}
                   </a>
@@ -323,7 +307,6 @@ export default function PostCard({ post, user, onLike, onDelete, onTagClick }) {
                 <button onClick={() => setShowComments(false)} style={{ background: 'none', border: 'none', fontSize: 18, cursor: 'pointer', color: '#888780' }}>✕</button>
               </div>
 
-              {/* legenda */}
               {post.caption && (
                 <div style={{ padding: '12px 16px', borderBottom: '0.5px solid #F0F7EC', flexShrink: 0 }}>
                   <p style={{ fontSize: 13, color: '#333', lineHeight: 1.5, margin: 0 }}>
@@ -333,7 +316,6 @@ export default function PostCard({ post, user, onLike, onDelete, onTagClick }) {
                 </div>
               )}
 
-              {/* lista de comentários */}
               <div style={{ overflowY: 'auto', flex: 1 }}>
                 {comments.length === 0 && (
                   <p style={{ textAlign: 'center', color: '#888', fontSize: 13, padding: 24 }}>Nenhum comentário ainda. Seja o primeiro! 🌱</p>
@@ -343,7 +325,6 @@ export default function PostCard({ post, user, onLike, onDelete, onTagClick }) {
                 ))}
               </div>
 
-              {/* likes */}
               <div style={{ padding: '10px 16px', borderTop: '0.5px solid #F0F7EC', flexShrink: 0, display: 'flex', alignItems: 'center', gap: 12 }}>
                 <button onClick={() => onLike(post.id)} style={{ background: 'none', border: 'none', cursor: user ? 'pointer' : 'default', display: 'flex', alignItems: 'center', gap: 5, padding: 0 }}>
                   <span style={{ fontSize: 18, color: liked ? '#3B6D11' : '#B4B2A9' }}>♥</span>
@@ -356,7 +337,6 @@ export default function PostCard({ post, user, onLike, onDelete, onTagClick }) {
                 )}
               </div>
 
-              {/* input de comentário */}
               {user && (
                 <div style={{ padding: '12px 16px', borderTop: '0.5px solid #E2F2D4', display: 'flex', gap: 8, flexShrink: 0 }}>
                   <input
@@ -419,8 +399,8 @@ export default function PostCard({ post, user, onLike, onDelete, onTagClick }) {
         </div>
 
         {post.image_url && (
-          <img src={post.image_url} alt="post" onClick={() => setLightbox(true)}
-            style={{ width: '100%', maxHeight: 500, objectFit: 'contain', background: '#F4FAF0', cursor: 'zoom-in', display: 'block' }} />
+          <img src={post.image_url} alt="post" onClick={() => setShowComments(true)}
+            style={{ width: '100%', maxHeight: 500, objectFit: 'contain', background: '#F4FAF0', cursor: 'pointer', display: 'block' }} />
         )}
 
         <div style={{ padding: '12px 14px' }}>
