@@ -2,16 +2,49 @@
 import { useEffect, useState, useRef } from 'react'
 import { supabase } from '../../lib/supabase'
 
+function FollowList({ title, list, onClose }) {
+  return (
+    <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: 20 }}>
+      <div onClick={e => e.stopPropagation()} style={{ background: '#fff', borderRadius: 20, width: '100%', maxWidth: 370, maxHeight: '70vh', display: 'flex', flexDirection: 'column', boxShadow: '0 8px 40px rgba(0,0,0,0.15)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 16px 12px', borderBottom: '0.5px solid #E2F2D4' }}>
+          <span style={{ fontWeight: 500, fontSize: 15, color: '#27500A' }}>{title}</span>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: 18, cursor: 'pointer', color: '#888780' }}>✕</button>
+        </div>
+        <div style={{ overflowY: 'auto', flex: 1, padding: '8px 0' }}>
+          {list.length === 0 && <p style={{ textAlign: 'center', color: '#888', fontSize: 13, padding: 24 }}>Nenhum usuário ainda 🌱</p>}
+          {list.map(item => {
+            const profile = item.profiles ?? item
+            const initial = (profile.username?.[0] ?? '?').toUpperCase()
+            return (
+              <a key={item.id} href={`/perfil/${profile.id}`} onClick={onClose} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 16px', textDecoration: 'none', borderBottom: '0.5px solid #F0F7EC' }}>
+                {profile.avatar_url
+                  ? <img src={profile.avatar_url} alt="" style={{ width: 40, height: 40, borderRadius: '50%', objectFit: 'cover', border: '1.5px solid #C5E4A7' }} />
+                  : <div style={{ width: 40, height: 40, borderRadius: '50%', background: '#EAF3DE', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 500, color: '#27500A', fontSize: 16, border: '1.5px solid #C5E4A7' }}>{initial}</div>
+                }
+                <span style={{ fontSize: 14, fontWeight: 500, color: '#1a1a1a' }}>{profile.username}</span>
+              </a>
+            )
+          })}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export default function PerfilPage() {
   const [user, setUser] = useState(null)
   const [profile, setProfile] = useState(null)
   const [posts, setPosts] = useState([])
-  const [stats, setStats] = useState({ posts: 0, likes: 0 })
+  const [stats, setStats] = useState({ posts: 0, likes: 0, followers: 0, following: 0 })
   const [editing, setEditing] = useState(false)
   const [username, setUsername] = useState('')
   const [bio, setBio] = useState('')
   const [uploadingAvatar, setUploadingAvatar] = useState(false)
   const [selected, setSelected] = useState(null)
+  const [showFollowers, setShowFollowers] = useState(false)
+  const [showFollowing, setShowFollowing] = useState(false)
+  const [followers, setFollowers] = useState([])
+  const [following, setFollowing] = useState([])
   const fileRef = useRef(null)
 
   useEffect(() => { load() }, [])
@@ -35,9 +68,31 @@ export default function PerfilPage() {
     const { data: myPosts } = await supabase.from('posts')
       .select('*, post_likes(id)').eq('user_id', user.id)
       .order('created_at', { ascending: false })
+
+    // seguidores
+    const { data: followersData } = await supabase
+      .from('follows')
+      .select('id, follower_id, profiles!follows_follower_id_fkey(id, username, avatar_url)')
+      .eq('following_id', user.id)
+    const followersList = followersData ?? []
+    setFollowers(followersList.map(f => ({ id: f.follower_id, profiles: f.profiles })))
+
+    // seguindo
+    const { data: followingData } = await supabase
+      .from('follows')
+      .select('id, following_id, profiles!follows_following_id_fkey(id, username, avatar_url)')
+      .eq('follower_id', user.id)
+    const followingList = followingData ?? []
+    setFollowing(followingList.map(f => ({ id: f.following_id, profiles: f.profiles })))
+
     if (myPosts) {
       setPosts(myPosts)
-      setStats({ posts: myPosts.length, likes: myPosts.reduce((a, p) => a + (p.post_likes?.length ?? 0), 0) })
+      setStats({
+        posts: myPosts.length,
+        likes: myPosts.reduce((a, p) => a + (p.post_likes?.length ?? 0), 0),
+        followers: followersList.length,
+        following: followingList.length,
+      })
     }
   }
 
@@ -69,7 +124,9 @@ export default function PerfilPage() {
 
   return (
     <div>
-      {/* lightbox */}
+      {showFollowers && <FollowList title={`Seguidores (${stats.followers})`} list={followers} onClose={() => setShowFollowers(false)} />}
+      {showFollowing && <FollowList title={`Seguindo (${stats.following})`} list={following} onClose={() => setShowFollowing(false)} />}
+
       {selected && (
         <div onClick={() => setSelected(null)} style={{ position: 'fixed', inset: 0, zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'zoom-out', padding: 20 }}>
           <div style={{ position: 'absolute', inset: 0, overflow: 'hidden' }}>
@@ -84,25 +141,12 @@ export default function PerfilPage() {
       )}
 
       <div style={{ textAlign: 'center', marginBottom: 32 }}>
-
-        {/* avatar com botão de upload */}
         <div style={{ position: 'relative', width: 88, height: 88, margin: '0 auto 12px' }}>
           {profile?.avatar_url
             ? <img src={profile.avatar_url} alt="avatar" style={{ width: 88, height: 88, borderRadius: '50%', objectFit: 'cover', border: '2px solid #C5E4A7' }} />
-            : <div style={{ width: 88, height: 88, borderRadius: '50%', background: '#EAF3DE', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 32, fontWeight: 500, color: '#27500A', border: '2px solid #C5E4A7' }}>
-                {initial}
-              </div>
+            : <div style={{ width: 88, height: 88, borderRadius: '50%', background: '#EAF3DE', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 32, fontWeight: 500, color: '#27500A', border: '2px solid #C5E4A7' }}>{initial}</div>
           }
-          <button
-            onClick={() => fileRef.current?.click()}
-            disabled={uploadingAvatar}
-            style={{
-              position: 'absolute', bottom: 0, right: 0,
-              width: 28, height: 28, borderRadius: '50%',
-              background: '#3B6D11', border: '2px solid #fff',
-              color: '#EAF3DE', fontSize: 14, cursor: 'pointer',
-              display: 'flex', alignItems: 'center', justifyContent: 'center'
-            }}>
+          <button onClick={() => fileRef.current?.click()} disabled={uploadingAvatar} style={{ position: 'absolute', bottom: 0, right: 0, width: 28, height: 28, borderRadius: '50%', background: '#3B6D11', border: '2px solid #fff', color: '#EAF3DE', fontSize: 14, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             {uploadingAvatar ? '...' : '📷'}
           </button>
           <input ref={fileRef} type="file" accept="image/*" onChange={uploadAvatar} style={{ display: 'none' }} />
@@ -129,13 +173,23 @@ export default function PerfilPage() {
           </>
         )}
 
-        <div style={{ display: 'flex', justifyContent: 'center', gap: 40, marginTop: 16 }}>
-          {[['posts', stats.posts], ['curtidas', stats.likes]].map(([label, val]) => (
-            <div key={label} style={{ textAlign: 'center' }}>
-              <p style={{ fontWeight: 500, fontSize: 20, color: '#3B6D11' }}>{val}</p>
-              <p style={{ fontSize: 12, color: '#888780' }}>{label}</p>
-            </div>
-          ))}
+        <div style={{ display: 'flex', justifyContent: 'center', gap: 24, marginTop: 8 }}>
+          <div style={{ textAlign: 'center' }}>
+            <p style={{ fontWeight: 500, fontSize: 20, color: '#3B6D11' }}>{stats.posts}</p>
+            <p style={{ fontSize: 12, color: '#888780' }}>posts</p>
+          </div>
+          <div style={{ textAlign: 'center' }}>
+            <p style={{ fontWeight: 500, fontSize: 20, color: '#3B6D11' }}>{stats.likes}</p>
+            <p style={{ fontSize: 12, color: '#888780' }}>curtidas</p>
+          </div>
+          <button onClick={() => setShowFollowers(true)} style={{ textAlign: 'center', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
+            <p style={{ fontWeight: 500, fontSize: 20, color: '#3B6D11' }}>{stats.followers}</p>
+            <p style={{ fontSize: 12, color: '#888780' }}>seguidores</p>
+          </button>
+          <button onClick={() => setShowFollowing(true)} style={{ textAlign: 'center', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
+            <p style={{ fontWeight: 500, fontSize: 20, color: '#3B6D11' }}>{stats.following}</p>
+            <p style={{ fontSize: 12, color: '#888780' }}>seguindo</p>
+          </button>
         </div>
       </div>
 
@@ -148,9 +202,7 @@ export default function PerfilPage() {
             }
           </div>
         ))}
-        {posts.length === 0 && (
-          <p style={{ gridColumn: '1/-1', textAlign: 'center', color: '#888', fontSize: 13, marginTop: 20 }}>Nenhum post ainda 🌱</p>
-        )}
+        {posts.length === 0 && <p style={{ gridColumn: '1/-1', textAlign: 'center', color: '#888', fontSize: 13, marginTop: 20 }}>Nenhum post ainda 🌱</p>}
       </div>
     </div>
   )
