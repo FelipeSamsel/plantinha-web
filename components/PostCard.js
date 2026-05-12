@@ -279,24 +279,37 @@ export default function PostCard({ post, user, onLike, onDelete, onTagClick }) {
 
       {showComments && (
         <div onClick={() => setShowComments(false)} style={{
-          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)',
+          position: 'fixed', inset: 0,
+          background: 'rgba(0,0,0,0.85)',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           zIndex: 1000, padding: 20
         }}>
           <div onClick={e => e.stopPropagation()} style={{
-            display: 'flex', borderRadius: 20, overflow: 'hidden',
-            width: '100%', maxWidth: 860, maxHeight: '85vh',
+            display: 'flex',
+            flexDirection: window.innerWidth < 768 ? 'column' : 'row',
+            borderRadius: 20, overflow: 'hidden',
+            width: '100%',
+            maxWidth: window.innerWidth < 768 ? 420 : 860,
+            maxHeight: '90vh',
             boxShadow: '0 8px 40px rgba(0,0,0,0.4)'
           }}>
-            {/* lado esquerdo — foto */}
-            <div style={{ flex: 1, background: '#000', display: 'flex', alignItems: 'center', justifyContent: 'center', minWidth: 0 }}>
-              {post.image_url && (
-                <img src={post.image_url} alt="post" style={{ width: '100%', height: '100%', objectFit: 'contain', maxHeight: '85vh' }} />
-              )}
-            </div>
+            {/* foto */}
+            {window.innerWidth >= 768 && (
+              <div style={{ flex: 1, background: '#000', display: 'flex', alignItems: 'center', justifyContent: 'center', minWidth: 0 }}>
+                {post.image_url && (
+                  <img src={post.image_url} alt="post" style={{ width: '100%', height: '100%', objectFit: 'contain', maxHeight: '90vh' }} />
+                )}
+              </div>
+            )}
 
-            {/* lado direito — comentários */}
-            <div style={{ width: 340, background: '#fff', display: 'flex', flexDirection: 'column', flexShrink: 0 }}>
+            {/* painel de comentários */}
+            <div style={{
+              width: window.innerWidth < 768 ? '100%' : 340,
+              background: '#fff',
+              display: 'flex', flexDirection: 'column',
+              flexShrink: 0,
+              maxHeight: window.innerWidth < 768 ? '90vh' : 'auto'
+            }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 16px', borderBottom: '0.5px solid #E2F2D4', flexShrink: 0 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                   <Avatar url={post.profiles?.avatar_url} name={post.profiles?.username} size={32} />
@@ -306,6 +319,13 @@ export default function PostCard({ post, user, onLike, onDelete, onTagClick }) {
                 </div>
                 <button onClick={() => setShowComments(false)} style={{ background: 'none', border: 'none', fontSize: 18, cursor: 'pointer', color: '#888780' }}>✕</button>
               </div>
+
+              {/* foto no mobile — em cima dos comentários */}
+              {window.innerWidth < 768 && post.image_url && (
+                <div style={{ background: '#000', flexShrink: 0 }}>
+                  <img src={post.image_url} alt="post" style={{ width: '100%', maxHeight: 240, objectFit: 'contain', display: 'block' }} />
+                </div>
+              )}
 
               {post.caption && (
                 <div style={{ padding: '12px 16px', borderBottom: '0.5px solid #F0F7EC', flexShrink: 0 }}>
