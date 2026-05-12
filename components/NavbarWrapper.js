@@ -58,6 +58,7 @@ export default function NavbarWrapper({ children }) {
           {[
             { href: '/', icon: '⊞', label: 'Feed' },
             { href: '/forum', icon: '💬', label: 'Fórum' },
+            { href: '/busca', icon: '🔍', label: 'Buscar' },
             ...(user ? [{ href: '/perfil', icon: '🪴', label: 'Meu Jardim' }] : []),
           ].map(({ href, icon, label }) => (
             <Link key={href} href={href} style={{
@@ -112,6 +113,13 @@ export default function NavbarWrapper({ children }) {
         </Link>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          {/* Lupa mobile */}
+          <Link href="/busca" style={{
+            width: 30, height: 30, display: 'flex',
+            alignItems: 'center', justifyContent: 'center',
+            fontSize: 18, textDecoration: 'none'
+          }}>🔍</Link>
+
           {user && <Notifications user={user} />}
           {user && (
             <button onClick={() => setShowModal(true)} style={{
@@ -147,6 +155,7 @@ export default function NavbarWrapper({ children }) {
               {[
                 { href: '/', icon: '⊞', label: 'Feed' },
                 { href: '/forum', icon: '💬', label: 'Fórum' },
+                { href: '/busca', icon: '🔍', label: 'Buscar' },
                 ...(user ? [{ href: '/perfil', icon: '🪴', label: 'Meu Jardim' }] : []),
               ].map(({ href, icon, label }) => (
                 <Link key={href} href={href} onClick={() => setMenuOpen(false)} style={{
