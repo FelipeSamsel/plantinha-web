@@ -72,7 +72,8 @@ function PainelBusca({ user, onClose }) {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-      {/* Header do painel */}
+
+      {/* Header */}
       <div style={{
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
         padding: '20px 20px 14px', borderBottom: '0.5px solid #E2F2D4'
@@ -80,15 +81,15 @@ function PainelBusca({ user, onClose }) {
         <span style={{ fontWeight: 600, fontSize: 16, color: '#27500A' }}>Buscar</span>
         <button onClick={onClose} style={{
           background: 'none', border: 'none', cursor: 'pointer',
-          fontSize: 18, color: '#B4B2A9', padding: 4
+          fontSize: 18, color: '#B4B2A9', padding: 4, lineHeight: 1
         }}>✕</button>
       </div>
 
-      {/* Campo de busca */}
+      {/* Campo */}
       <div style={{ padding: '14px 16px 10px', position: 'relative' }}>
         <span style={{
           position: 'absolute', left: 28, top: '50%', transform: 'translateY(-50%)',
-          fontSize: 16, color: '#B4B2A9', pointerEvents: 'none'
+          fontSize: 15, color: '#B4B2A9', pointerEvents: 'none'
         }}>🔍</span>
         <input
           ref={inputRef}
@@ -112,11 +113,12 @@ function PainelBusca({ user, onClose }) {
         )}
       </div>
 
-      {/* Conteúdo */}
+      {/* Resultados */}
       <div style={{ flex: 1, overflowY: 'auto', padding: '0 16px 16px' }}>
+
         {!query.trim() && (
           <div style={{ textAlign: 'center', color: '#B4B2A9', marginTop: 48 }}>
-            <div style={{ fontSize: 40, marginBottom: 10 }}>🌱</div>
+            <div style={{ fontSize: 36, marginBottom: 8 }}>🌱</div>
             <p style={{ fontSize: 14 }}>Digite para buscar</p>
           </div>
         )}
@@ -130,17 +132,18 @@ function PainelBusca({ user, onClose }) {
 
         {query.trim() && !loading && !temResultados && (
           <div style={{ textAlign: 'center', color: '#B4B2A9', marginTop: 48 }}>
-            <div style={{ fontSize: 36 }}>🍂</div>
-            <p style={{ fontSize: 14, marginTop: 8 }}>Nenhum resultado encontrado</p>
+            <div style={{ fontSize: 32 }}>🍂</div>
+            <p style={{ fontSize: 14, marginTop: 8 }}>Nenhum resultado</p>
           </div>
         )}
 
         {query.trim() && !loading && temResultados && (
           <>
+            {/* Abas */}
             <div style={{ display: 'flex', gap: 2, marginBottom: 14, borderBottom: '1px solid #E2F2D4' }}>
               {abas.map(({ key, label, count }) => (
                 <button key={key} onClick={() => setAba(key)} style={{
-                  padding: '8px 12px', background: 'none', border: 'none',
+                  padding: '8px 10px', background: 'none', border: 'none',
                   cursor: 'pointer', fontSize: 13, fontWeight: 500,
                   color: aba === key ? '#3B6D11' : '#B4B2A9',
                   borderBottom: aba === key ? '2px solid #3B6D11' : '2px solid transparent',
@@ -149,7 +152,7 @@ function PainelBusca({ user, onClose }) {
                   {label}
                   {count > 0 && (
                     <span style={{
-                      marginLeft: 5, fontSize: 11, padding: '1px 6px', borderRadius: 20,
+                      marginLeft: 4, fontSize: 11, padding: '1px 5px', borderRadius: 20,
                       background: aba === key ? '#EAF3DE' : '#F4F4F2',
                       color: aba === key ? '#3B6D11' : '#B4B2A9'
                     }}>{count}</span>
@@ -158,6 +161,7 @@ function PainelBusca({ user, onClose }) {
               ))}
             </div>
 
+            {/* Pessoas */}
             {aba === 'pessoas' && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                 {pessoas.length === 0
@@ -186,11 +190,11 @@ function PainelBusca({ user, onClose }) {
                       </Link>
                       {user && user.id !== p.id && (
                         <button onClick={() => toggleSeguir(p.id)} style={{
-                          padding: '6px 14px', borderRadius: 20, fontSize: 12, fontWeight: 500,
+                          padding: '6px 12px', borderRadius: 20, fontSize: 12, fontWeight: 500,
                           cursor: 'pointer', border: 'none',
                           background: seguindo.has(p.id) ? '#EAF3DE' : '#3B6D11',
                           color: seguindo.has(p.id) ? '#3B6D11' : '#fff',
-                          transition: 'all 0.2s'
+                          transition: 'all 0.2s', whiteSpace: 'nowrap'
                         }}>
                           {seguindo.has(p.id) ? 'Seguindo' : 'Seguir'}
                         </button>
@@ -200,6 +204,7 @@ function PainelBusca({ user, onClose }) {
               </div>
             )}
 
+            {/* Hashtags */}
             {aba === 'hashtags' && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                 {hashtags.length === 0
@@ -217,6 +222,7 @@ function PainelBusca({ user, onClose }) {
               </div>
             )}
 
+            {/* Posts */}
             {aba === 'posts' && (
               posts.length === 0
                 ? <p style={{ color: '#B4B2A9', fontSize: 13, textAlign: 'center', marginTop: 24 }}>Nenhum post encontrado</p>
@@ -284,33 +290,38 @@ export default function NavbarWrapper({ children }) {
   return (
     <div className="layout-shell">
 
-      {/* ── PAINEL DE BUSCA DESKTOP ── */}
+      {/* ── PAINEL BUSCA DESKTOP — fica colado à sidebar, sem cobrir o feed ── */}
       {buscaAberta && (
         <>
+          {/* fecha ao clicar fora — só cobre a área do painel + sidebar */}
           <div
-            className="busca-backdrop-desktop"
             onClick={() => setBuscaAberta(false)}
-            style={{ position: 'fixed', inset: 0, zIndex: 200, background: 'rgba(0,0,0,0.15)' }}
+            style={{ position: 'fixed', inset: 0, zIndex: 49 }}
           />
-          <div className="busca-painel-desktop" style={{
-            position: 'fixed', left: 220, top: 0, bottom: 0,
-            width: 320, background: '#fff', zIndex: 201,
-            boxShadow: '4px 0 24px rgba(0,0,0,0.10)',
+          <div style={{
+            position: 'fixed',
+            left: 'var(--sidebar-width, 220px)',
+            top: 0, bottom: 0,
+            width: 300,
+            background: '#fff',
+            zIndex: 50,
+            boxShadow: '4px 0 20px rgba(0,0,0,0.08)',
             borderRight: '0.5px solid #E2F2D4',
-            display: 'flex', flexDirection: 'column'
-          }}>
+            display: 'flex', flexDirection: 'column',
+            // só aparece no desktop
+          }} className="busca-painel-desktop">
             <PainelBusca user={user} onClose={() => setBuscaAberta(false)} />
           </div>
         </>
       )}
 
-      {/* ── PAINEL DE BUSCA MOBILE ── */}
+      {/* ── PAINEL BUSCA MOBILE — tela cheia abaixo da topbar ── */}
       {buscaAberta && (
-        <div className="busca-painel-mobile" style={{
+        <div style={{
           position: 'fixed', top: 56, left: 0, right: 0, bottom: 0,
           background: '#fff', zIndex: 150,
-          display: 'flex', flexDirection: 'column'
-        }}>
+          display: 'flex', flexDirection: 'column',
+        }} className="busca-painel-mobile">
           <PainelBusca user={user} onClose={() => setBuscaAberta(false)} />
         </div>
       )}
@@ -345,11 +356,12 @@ export default function NavbarWrapper({ children }) {
               display: 'flex', alignItems: 'center', gap: 12,
               padding: '11px 14px', borderRadius: 12, fontSize: 15,
               color: buscaAberta ? '#3B6D11' : '#27500A',
-              fontWeight: 500, background: buscaAberta ? '#EAF3DE' : 'transparent',
+              fontWeight: 500,
+              background: buscaAberta ? '#EAF3DE' : 'transparent',
               border: 'none', cursor: 'pointer', width: '100%', transition: 'all 0.15s'
             }}
             onMouseOver={e => { if (!buscaAberta) e.currentTarget.style.background = '#EAF3DE' }}
-            onMouseOut={e => { if (!buscaAberta) e.currentTarget.style.background = 'transparent' }}>
+            onMouseOut={e => { if (!buscaAberta) e.currentTarget.style.background = buscaAberta ? '#EAF3DE' : 'transparent' }}>
             <span style={{ fontSize: 18 }}>🔍</span>
             Buscar
           </button>
@@ -468,6 +480,16 @@ export default function NavbarWrapper({ children }) {
       </main>
 
       {newPostModal}
+
+      {/* CSS para controlar qual painel aparece por breakpoint */}
+      <style>{`
+        .busca-painel-mobile { display: none !important; }
+        .busca-painel-desktop { display: flex !important; }
+        @media (max-width: 768px) {
+          .busca-painel-mobile { display: flex !important; }
+          .busca-painel-desktop { display: none !important; }
+        }
+      `}</style>
     </div>
   )
 }
