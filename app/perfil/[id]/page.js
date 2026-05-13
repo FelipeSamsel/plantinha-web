@@ -55,42 +55,25 @@ export default function PublicProfilePage() {
 
   async function load() {
     const { data: { user } } = await supabase.auth.getUser().catch(() => ({ data: { user: null } }))
-
     const { data: prof } = await supabase.from('profiles').select('*').eq('id', id).maybeSingle()
     setProfile(prof)
 
-    // busca posts com TUDO que o PostCard precisa
     const { data: userPosts } = await supabase
       .from('posts')
       .select('*, profiles(username, avatar_url), post_likes(id, user_id, profiles(username, avatar_url)), post_tags(tag), comments(id, body, user_id, created_at, profiles(username, avatar_url))')
       .eq('user_id', id)
       .order('created_at', { ascending: false })
-    if (userPosts) {
-      setPosts(userPosts)
-      // atualiza post aberto se necessário
-      if (selectedPost) {
-        const updated = userPosts.find(p => p.id === selectedPost.id)
-        if (updated) setSelectedPost(updated)
-      }
-    }
+    if (userPosts) setPosts(userPosts)
 
-    const { data: followersData } = await supabase
-      .from('follows')
-      .select('id, follower_id, profiles!follows_follower_id_fkey(id, username, avatar_url)')
-      .eq('following_id', id)
+    const { data: followersData } = await supabase.from('follows').select('id, follower_id, profiles!follows_follower_id_fkey(id, username, avatar_url)').eq('following_id', id)
     const followersList = followersData ?? []
     setFollowers(followersList.map(f => ({ id: f.follower_id, profiles: f.profiles })))
 
-    const { data: followingData } = await supabase
-      .from('follows')
-      .select('id, following_id, profiles!follows_following_id_fkey(id, username, avatar_url)')
-      .eq('follower_id', id)
+    const { data: followingData } = await supabase.from('follows').select('id, following_id, profiles!follows_following_id_fkey(id, username, avatar_url)').eq('follower_id', id)
     const followingList = followingData ?? []
     setFollowing(followingList.map(f => ({ id: f.following_id, profiles: f.profiles })))
 
-    if (user) {
-      setIsFollowing(followersList.some(f => f.follower_id === user.id))
-    }
+    if (user) setIsFollowing(followersList.some(f => f.follower_id === user.id))
 
     setStats({
       posts: userPosts?.length ?? 0,
@@ -98,7 +81,6 @@ export default function PublicProfilePage() {
       followers: followersList.length,
       following: followingList.length,
     })
-
     setLoading(false)
   }
 
@@ -112,10 +94,7 @@ export default function PublicProfilePage() {
       await supabase.from('post_likes').insert({ post_id: postId, user_id: currentUser.id })
       if (post.user_id !== currentUser.id) {
         const { data: prof } = await supabase.from('profiles').select('username').eq('id', currentUser.id).single()
-        await supabase.from('notifications').insert({
-          user_id: post.user_id, from_user_id: currentUser.id, type: 'like', post_id: postId,
-          message: `${prof?.username ?? 'Alguém'} curtiu sua foto 🌿`
-        })
+        await supabase.from('notifications').insert({ user_id: post.user_id, from_user_id: currentUser.id, type: 'like', post_id: postId, message: `${prof?.username ?? 'Alguém'} curtiu sua foto 🌿` })
       }
     }
     load()
@@ -129,10 +108,7 @@ export default function PublicProfilePage() {
     } else {
       await supabase.from('follows').insert({ follower_id: currentUser.id, following_id: id })
       const { data: prof } = await supabase.from('profiles').select('username').eq('id', currentUser.id).single()
-      await supabase.from('notifications').insert({
-        user_id: id, from_user_id: currentUser.id, type: 'like',
-        message: `${prof?.username ?? 'Alguém'} começou a seguir você 🌿`
-      })
+      await supabase.from('notifications').insert({ user_id: id, from_user_id: currentUser.id, type: 'like', message: `${prof?.username ?? 'Alguém'} começou a seguir você 🌿` })
     }
     setIsFollowing(!isFollowing)
     await load()
@@ -150,33 +126,21 @@ export default function PublicProfilePage() {
       {showFollowers && <FollowList title={`Seguidores (${stats.followers})`} list={followers} onClose={() => setShowFollowers(false)} />}
       {showFollowing && <FollowList title={`Seguindo (${stats.following})`} list={following} onClose={() => setShowFollowing(false)} />}
 
-      {/* ── MODAL DO POST COMPLETO ── */}
+      {/* Modal do PostCard — abre direto nos comentários */}
       {selectedPost && (
-        <div onClick={() => setSelectedPost(null)} style={{
-          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          zIndex: 1000, padding: 20, overflowY: 'auto'
-        }}>
-          <div onClick={e => e.stopPropagation()} style={{ width: '100%', maxWidth: 480, position: 'relative' }}>
-            <button onClick={() => setSelectedPost(null)} style={{
-              position: 'absolute', top: -14, right: -14, zIndex: 10,
-              background: 'rgba(255,255,255,0.15)', backdropFilter: 'blur(8px)',
-              border: '0.5px solid rgba(255,255,255,0.25)', color: '#fff',
-              width: 32, height: 32, borderRadius: '50%', fontSize: 16,
-              cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center'
-            }}>✕</button>
-            <PostCard
-              post={selectedPost}
-              user={currentUser}
-              onLike={toggleLike}
-              onDelete={() => { setSelectedPost(null); load() }}
-              onTagClick={() => {}}
-            />
-          </div>
+        <div onClick={() => setSelectedPost(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.01)', zIndex: 999 }}>
+          <PostCard
+            post={selectedPost}
+            user={currentUser}
+            onLike={toggleLike}
+            onDelete={() => { setSelectedPost(null); load() }}
+            onTagClick={() => {}}
+            autoOpenComments={true}
+          />
         </div>
       )}
 
-      {/* ── HEADER ── */}
+      {/* Header */}
       <div style={{ textAlign: 'center', marginBottom: 28 }}>
         <div style={{ width: 88, height: 88, margin: '0 auto 12px' }}>
           {profile.avatar_url
@@ -184,7 +148,6 @@ export default function PublicProfilePage() {
             : <div style={{ width: 88, height: 88, borderRadius: '50%', background: '#EAF3DE', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 32, fontWeight: 500, color: '#27500A', border: '2px solid #C5E4A7' }}>{initial}</div>
           }
         </div>
-
         <p style={{ fontWeight: 500, fontSize: 18, color: '#1a1a1a', marginBottom: 4 }}>{profile.username}</p>
         {profile.bio && <p style={{ fontSize: 13, color: '#888780', marginBottom: 12 }}>{profile.bio}</p>}
 
@@ -193,14 +156,7 @@ export default function PublicProfilePage() {
             ir para meu jardim
           </a>
         ) : currentUser && (
-          <button onClick={toggleFollow} disabled={followLoading} style={{
-            background: isFollowing ? '#fff' : '#3B6D11',
-            color: isFollowing ? '#3B6D11' : '#EAF3DE',
-            border: isFollowing ? '0.5px solid #C5E4A7' : 'none',
-            borderRadius: 20, padding: '8px 24px', fontSize: 13,
-            fontWeight: 500, cursor: 'pointer', marginBottom: 16,
-            fontFamily: 'inherit', transition: 'all 0.2s'
-          }}>
+          <button onClick={toggleFollow} disabled={followLoading} style={{ background: isFollowing ? '#fff' : '#3B6D11', color: isFollowing ? '#3B6D11' : '#EAF3DE', border: isFollowing ? '0.5px solid #C5E4A7' : 'none', borderRadius: 20, padding: '8px 24px', fontSize: 13, fontWeight: 500, cursor: 'pointer', marginBottom: 16, fontFamily: 'inherit', transition: 'all 0.2s' }}>
             {followLoading ? '...' : isFollowing ? 'Seguindo ✓' : '+ Seguir'}
           </button>
         )}
@@ -223,29 +179,19 @@ export default function PublicProfilePage() {
 
       <div style={{ borderTop: '0.5px solid #E2F2D4', marginBottom: 16 }} />
 
-      {/* ── GRID DE FOTOS ── */}
-      {posts.length === 0 && (
-        <p style={{ textAlign: 'center', color: '#888', fontSize: 13, marginTop: 40 }}>Nenhum post ainda 🌱</p>
-      )}
+      {/* Grid */}
+      {posts.length === 0 && <p style={{ textAlign: 'center', color: '#888', fontSize: 13, marginTop: 40 }}>Nenhum post ainda 🌱</p>}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 3 }}>
         {posts.map(post => (
-          <div
-            key={post.id}
-            onClick={() => setSelectedPost(post)}
+          <div key={post.id} onClick={() => setSelectedPost(post)}
             style={{ aspectRatio: '1', borderRadius: 4, background: '#EAF3DE', overflow: 'hidden', cursor: 'pointer', position: 'relative' }}
-            onMouseOver={e => e.currentTarget.querySelector('.overlay')?.style && (e.currentTarget.querySelector('.overlay').style.opacity = '1')}
-            onMouseOut={e => e.currentTarget.querySelector('.overlay')?.style && (e.currentTarget.querySelector('.overlay').style.opacity = '0')}
-          >
+            onMouseOver={e => e.currentTarget.querySelector('.ov')?.style && (e.currentTarget.querySelector('.ov').style.opacity = '1')}
+            onMouseOut={e => e.currentTarget.querySelector('.ov')?.style && (e.currentTarget.querySelector('.ov').style.opacity = '0')}>
             {post.image_url
               ? <img src={post.image_url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
               : <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 28 }}>🌿</div>
             }
-            <div className="overlay" style={{
-              position: 'absolute', inset: 0,
-              background: 'rgba(0,0,0,0.35)',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              gap: 16, opacity: 0, transition: 'opacity 0.15s'
-            }}>
+            <div className="ov" style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.35)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 16, opacity: 0, transition: 'opacity 0.15s' }}>
               <span style={{ color: '#fff', fontSize: 13, fontWeight: 600 }}>♥ {post.post_likes?.length ?? 0}</span>
               <span style={{ color: '#fff', fontSize: 13, fontWeight: 600 }}>💬 {post.comments?.length ?? 0}</span>
             </div>
