@@ -2,25 +2,7 @@
 import { useEffect, useState } from 'react'
 import { useParams } from 'next/navigation'
 import { supabase } from '../../../lib/supabase'
-
-function Lightbox({ post, onClose }) {
-  return (
-    <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'zoom-out', padding: 20 }}>
-      <div style={{ position: 'absolute', inset: 0, overflow: 'hidden' }}>
-        <img src={post.image_url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', filter: 'blur(24px) brightness(0.4) saturate(1.8)', transform: 'scale(1.1)' }} />
-      </div>
-      <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(135deg, rgba(39,80,10,0.35) 0%, rgba(15,110,86,0.25) 100%)' }} />
-      <div onClick={e => e.stopPropagation()} style={{ position: 'relative', zIndex: 2, width: '100%', maxWidth: 340 }}>
-        <img src={post.image_url} alt="" style={{ width: '100%', borderRadius: 20, boxShadow: '0 24px 60px rgba(0,0,0,0.5)', objectFit: 'contain', maxHeight: '65vh', display: 'block' }} />
-        <div style={{ background: 'rgba(255,255,255,0.12)', backdropFilter: 'blur(12px)', borderRadius: 14, padding: '10px 16px', marginTop: 14, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <span style={{ fontSize: 13, color: '#fff' }}>{post.caption || ''}</span>
-          <span style={{ fontSize: 13, color: '#C0DD97', fontWeight: 500 }}>♥ {post.post_likes?.length ?? 0}</span>
-        </div>
-      </div>
-      <button onClick={onClose} style={{ position: 'fixed', top: 16, right: 16, zIndex: 3, background: 'rgba(255,255,255,0.15)', backdropFilter: 'blur(8px)', border: '0.5px solid rgba(255,255,255,0.25)', color: '#fff', width: 36, height: 36, borderRadius: '50%', fontSize: 16, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>✕</button>
-    </div>
-  )
-}
+import PostCard from '../../../components/PostCard'
 
 function FollowList({ title, list, onClose }) {
   return (
@@ -56,7 +38,7 @@ export default function PublicProfilePage() {
   const [profile, setProfile] = useState(null)
   const [posts, setPosts] = useState([])
   const [stats, setStats] = useState({ posts: 0, likes: 0, followers: 0, following: 0 })
-  const [selected, setSelected] = useState(null)
+  const [selectedPost, setSelectedPost] = useState(null)
   const [loading, setLoading] = useState(true)
   const [currentUser, setCurrentUser] = useState(null)
   const [isFollowing, setIsFollowing] = useState(false)
@@ -67,9 +49,7 @@ export default function PublicProfilePage() {
   const [following, setFollowing] = useState([])
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => {
-      setCurrentUser(data.session?.user ?? null)
-    })
+    supabase.auth.getSession().then(({ data }) => setCurrentUser(data.session?.user ?? null))
     load()
   }, [id])
 
@@ -79,12 +59,21 @@ export default function PublicProfilePage() {
     const { data: prof } = await supabase.from('profiles').select('*').eq('id', id).maybeSingle()
     setProfile(prof)
 
+    // busca posts com TUDO que o PostCard precisa
     const { data: userPosts } = await supabase
-      .from('posts').select('*, post_likes(id)')
-      .eq('user_id', id).order('created_at', { ascending: false })
-    if (userPosts) setPosts(userPosts)
+      .from('posts')
+      .select('*, profiles(username, avatar_url), post_likes(id, user_id, profiles(username, avatar_url)), post_tags(tag), comments(id, body, user_id, created_at, profiles(username, avatar_url))')
+      .eq('user_id', id)
+      .order('created_at', { ascending: false })
+    if (userPosts) {
+      setPosts(userPosts)
+      // atualiza post aberto se necessário
+      if (selectedPost) {
+        const updated = userPosts.find(p => p.id === selectedPost.id)
+        if (updated) setSelectedPost(updated)
+      }
+    }
 
-    // seguidores
     const { data: followersData } = await supabase
       .from('follows')
       .select('id, follower_id, profiles!follows_follower_id_fkey(id, username, avatar_url)')
@@ -92,7 +81,6 @@ export default function PublicProfilePage() {
     const followersList = followersData ?? []
     setFollowers(followersList.map(f => ({ id: f.follower_id, profiles: f.profiles })))
 
-    // seguindo
     const { data: followingData } = await supabase
       .from('follows')
       .select('id, following_id, profiles!follows_following_id_fkey(id, username, avatar_url)')
@@ -100,10 +88,8 @@ export default function PublicProfilePage() {
     const followingList = followingData ?? []
     setFollowing(followingList.map(f => ({ id: f.following_id, profiles: f.profiles })))
 
-    // verifica se o usuário atual já segue
     if (user) {
-      const alreadyFollowing = followersList.some(f => f.follower_id === user.id)
-      setIsFollowing(alreadyFollowing)
+      setIsFollowing(followersList.some(f => f.follower_id === user.id))
     }
 
     setStats({
@@ -116,6 +102,25 @@ export default function PublicProfilePage() {
     setLoading(false)
   }
 
+  async function toggleLike(postId) {
+    if (!currentUser) return
+    const post = posts.find(p => p.id === postId)
+    const liked = post.post_likes.some(l => l.user_id === currentUser.id)
+    if (liked) {
+      await supabase.from('post_likes').delete().match({ post_id: postId, user_id: currentUser.id })
+    } else {
+      await supabase.from('post_likes').insert({ post_id: postId, user_id: currentUser.id })
+      if (post.user_id !== currentUser.id) {
+        const { data: prof } = await supabase.from('profiles').select('username').eq('id', currentUser.id).single()
+        await supabase.from('notifications').insert({
+          user_id: post.user_id, from_user_id: currentUser.id, type: 'like', post_id: postId,
+          message: `${prof?.username ?? 'Alguém'} curtiu sua foto 🌿`
+        })
+      }
+    }
+    load()
+  }
+
   async function toggleFollow() {
     if (!currentUser) return
     setFollowLoading(true)
@@ -123,13 +128,10 @@ export default function PublicProfilePage() {
       await supabase.from('follows').delete().match({ follower_id: currentUser.id, following_id: id })
     } else {
       await supabase.from('follows').insert({ follower_id: currentUser.id, following_id: id })
-      // notifica o usuário seguido
-      const { data: profile } = await supabase.from('profiles').select('username').eq('id', currentUser.id).single()
+      const { data: prof } = await supabase.from('profiles').select('username').eq('id', currentUser.id).single()
       await supabase.from('notifications').insert({
-        user_id: id,
-        from_user_id: currentUser.id,
-        type: 'like',
-        message: `${profile?.username ?? 'Alguém'} começou a seguir você 🌿`
+        user_id: id, from_user_id: currentUser.id, type: 'like',
+        message: `${prof?.username ?? 'Alguém'} começou a seguir você 🌿`
       })
     }
     setIsFollowing(!isFollowing)
@@ -145,11 +147,37 @@ export default function PublicProfilePage() {
 
   return (
     <div>
-      {selected && <Lightbox post={selected} onClose={() => setSelected(null)} />}
       {showFollowers && <FollowList title={`Seguidores (${stats.followers})`} list={followers} onClose={() => setShowFollowers(false)} />}
       {showFollowing && <FollowList title={`Seguindo (${stats.following})`} list={following} onClose={() => setShowFollowing(false)} />}
 
-      <div style={{ textAlign: 'center', marginBottom: 32 }}>
+      {/* ── MODAL DO POST COMPLETO ── */}
+      {selectedPost && (
+        <div onClick={() => setSelectedPost(null)} style={{
+          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          zIndex: 1000, padding: 20, overflowY: 'auto'
+        }}>
+          <div onClick={e => e.stopPropagation()} style={{ width: '100%', maxWidth: 480, position: 'relative' }}>
+            <button onClick={() => setSelectedPost(null)} style={{
+              position: 'absolute', top: -14, right: -14, zIndex: 10,
+              background: 'rgba(255,255,255,0.15)', backdropFilter: 'blur(8px)',
+              border: '0.5px solid rgba(255,255,255,0.25)', color: '#fff',
+              width: 32, height: 32, borderRadius: '50%', fontSize: 16,
+              cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center'
+            }}>✕</button>
+            <PostCard
+              post={selectedPost}
+              user={currentUser}
+              onLike={toggleLike}
+              onDelete={() => { setSelectedPost(null); load() }}
+              onTagClick={() => {}}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* ── HEADER ── */}
+      <div style={{ textAlign: 'center', marginBottom: 28 }}>
         <div style={{ width: 88, height: 88, margin: '0 auto 12px' }}>
           {profile.avatar_url
             ? <img src={profile.avatar_url} alt="avatar" style={{ width: 88, height: 88, borderRadius: '50%', objectFit: 'cover', border: '2px solid #C5E4A7', display: 'block' }} />
@@ -160,7 +188,6 @@ export default function PublicProfilePage() {
         <p style={{ fontWeight: 500, fontSize: 18, color: '#1a1a1a', marginBottom: 4 }}>{profile.username}</p>
         {profile.bio && <p style={{ fontSize: 13, color: '#888780', marginBottom: 12 }}>{profile.bio}</p>}
 
-        {/* botão seguir ou ir pro jardim */}
         {isOwnProfile ? (
           <a href="/perfil" style={{ display: 'inline-block', background: 'transparent', color: '#3B6D11', border: '0.5px solid #C5E4A7', borderRadius: 20, padding: '6px 16px', fontSize: 13, cursor: 'pointer', marginBottom: 16, textDecoration: 'none' }}>
             ir para meu jardim
@@ -178,7 +205,6 @@ export default function PublicProfilePage() {
           </button>
         )}
 
-        {/* stats */}
         <div style={{ display: 'flex', justifyContent: 'center', gap: 28, marginTop: 8 }}>
           <div style={{ textAlign: 'center' }}>
             <p style={{ fontWeight: 500, fontSize: 20, color: '#3B6D11' }}>{stats.posts}</p>
@@ -195,16 +221,36 @@ export default function PublicProfilePage() {
         </div>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6 }}>
+      <div style={{ borderTop: '0.5px solid #E2F2D4', marginBottom: 16 }} />
+
+      {/* ── GRID DE FOTOS ── */}
+      {posts.length === 0 && (
+        <p style={{ textAlign: 'center', color: '#888', fontSize: 13, marginTop: 40 }}>Nenhum post ainda 🌱</p>
+      )}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 3 }}>
         {posts.map(post => (
-          <div key={post.id} onClick={() => setSelected(post)} style={{ aspectRatio: '1', borderRadius: 12, background: '#EAF3DE', overflow: 'hidden', cursor: 'zoom-in' }}>
+          <div
+            key={post.id}
+            onClick={() => setSelectedPost(post)}
+            style={{ aspectRatio: '1', borderRadius: 4, background: '#EAF3DE', overflow: 'hidden', cursor: 'pointer', position: 'relative' }}
+            onMouseOver={e => e.currentTarget.querySelector('.overlay')?.style && (e.currentTarget.querySelector('.overlay').style.opacity = '1')}
+            onMouseOut={e => e.currentTarget.querySelector('.overlay')?.style && (e.currentTarget.querySelector('.overlay').style.opacity = '0')}
+          >
             {post.image_url
               ? <img src={post.image_url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
               : <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 28 }}>🌿</div>
             }
+            <div className="overlay" style={{
+              position: 'absolute', inset: 0,
+              background: 'rgba(0,0,0,0.35)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              gap: 16, opacity: 0, transition: 'opacity 0.15s'
+            }}>
+              <span style={{ color: '#fff', fontSize: 13, fontWeight: 600 }}>♥ {post.post_likes?.length ?? 0}</span>
+              <span style={{ color: '#fff', fontSize: 13, fontWeight: 600 }}>💬 {post.comments?.length ?? 0}</span>
+            </div>
           </div>
         ))}
-        {posts.length === 0 && <p style={{ gridColumn: '1/-1', textAlign: 'center', color: '#888', fontSize: 13, marginTop: 20 }}>Nenhum post ainda 🌱</p>}
       </div>
     </div>
   )
