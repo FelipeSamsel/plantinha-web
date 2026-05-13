@@ -2,8 +2,10 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import PostCard from '../components/PostCard'
+import { useT } from '../lib/i18n'
 
 export default function FeedPage() {
+  const t = useT()
   const [posts, setPosts] = useState([])
   const [user, setUser] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -30,10 +32,7 @@ export default function FeedPage() {
       .limit(30)
 
     if (activeTag) {
-      const { data: taggedIds } = await supabase
-        .from('post_tags')
-        .select('post_id')
-        .eq('tag', activeTag)
+      const { data: taggedIds } = await supabase.from('post_tags').select('post_id').eq('tag', activeTag)
       const ids = taggedIds?.map(t => t.post_id) ?? []
       if (ids.length === 0) { setPosts([]); return }
       q = q.in('id', ids)
@@ -52,14 +51,13 @@ export default function FeedPage() {
     } else {
       await supabase.from('post_likes').insert({ post_id: postId, user_id: user.id })
       if (post.user_id !== user.id) {
-        const { data: profile } = await supabase
-          .from('profiles').select('username').eq('id', user.id).single()
+        const { data: profile } = await supabase.from('profiles').select('username').eq('id', user.id).single()
         await supabase.from('notifications').insert({
           user_id: post.user_id,
           from_user_id: user.id,
           type: 'like',
           post_id: postId,
-          message: `${profile?.username ?? 'Alguém'} curtiu sua foto 🌿`
+          message: t.liked(profile?.username ?? 'Alguém')
         })
       }
     }
@@ -75,27 +73,18 @@ export default function FeedPage() {
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: '#EAF3DE', borderRadius: 12, padding: '10px 14px', marginBottom: 16, border: '0.5px solid #C5E4A7' }}>
           <span style={{ fontSize: 14, color: '#27500A', fontWeight: 500 }}>#{activeTag}</span>
           <button onClick={() => setActiveTag(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#888780', fontSize: 13, display: 'flex', alignItems: 'center', gap: 4 }}>
-            ✕ limpar filtro
+            {t.clearFilter}
           </button>
         </div>
       )}
-
       {posts.length === 0 && (
         <p style={{ color: '#888', textAlign: 'center', marginTop: 60 }}>
-          {activeTag ? `Nenhum post com #${activeTag} ainda.` : 'Nenhum post ainda. Seja o primeiro! 🌿'}
+          {activeTag ? t.noPostsTag(activeTag) : t.noPostsYet}
         </p>
       )}
-
       <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
         {posts.map(post => (
-          <PostCard
-            key={post.id}
-            post={post}
-            user={user}
-            onLike={toggleLike}
-            onDelete={loadPosts}
-            onTagClick={tag => setActiveTag(tag)}
-          />
+          <PostCard key={post.id} post={post} user={user} onLike={toggleLike} onDelete={loadPosts} onTagClick={tag => setActiveTag(tag)} />
         ))}
       </div>
     </div>
@@ -103,6 +92,7 @@ export default function FeedPage() {
 }
 
 function LoginScreen() {
+  const t = useT()
   const [mode, setMode] = useState('home')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -111,64 +101,31 @@ function LoginScreen() {
   const [sent, setSent] = useState(false)
 
   async function signInGoogle() {
-    await supabase.auth.signInWithOAuth({
-      provider: 'google',
-      options: { redirectTo: `${window.location.origin}/auth/callback` }
-    })
+    await supabase.auth.signInWithOAuth({ provider: 'google', options: { redirectTo: `${window.location.origin}/auth/callback` } })
   }
 
   async function signIn() {
-    if (!email || !password) return alert('Preencha e-mail e senha.')
+    if (!email || !password) return alert(t.fillEmailPassword)
     setLoading(true)
     const { error } = await supabase.auth.signInWithPassword({ email, password })
-    if (error) alert(error.message === 'Invalid login credentials' ? 'E-mail ou senha incorretos.' : error.message)
+    if (error) alert(error.message === 'Invalid login credentials' ? t.wrongCredentials : error.message)
     setLoading(false)
   }
 
   async function register() {
-    if (!username || !email || !password) return alert('Preencha todos os campos.')
-    if (password.length < 6) return alert('A senha precisa ter pelo menos 6 caracteres.')
+    if (!username || !email || !password) return alert(t.fillAllFields)
+    if (password.length < 6) return alert(t.passwordTooShort)
     setLoading(true)
-    const { error } = await supabase.auth.signUp({
-      email, password,
-      options: { data: { name: username } }
-    })
+    const { error } = await supabase.auth.signUp({ email, password, options: { data: { name: username } } })
     if (error) alert(error.message)
     else setSent(true)
     setLoading(false)
   }
 
-  const inputStyle = {
-    width: '100%', border: '0.5px solid #C5E4A7', borderRadius: 12,
-    padding: '12px 14px', fontSize: 14, outline: 'none',
-    fontFamily: 'inherit', background: '#fff', color: '#1a1a1a',
-    marginBottom: 10
-  }
-
-  const btnGreen = {
-    width: '100%', background: '#3B6D11', color: '#EAF3DE',
-    border: 'none', borderRadius: 12, padding: '13px 16px',
-    fontSize: 14, fontWeight: 500, cursor: 'pointer', marginBottom: 10,
-    fontFamily: 'inherit'
-  }
-
-  const btnWhite = {
-    width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
-    background: '#fff', border: '0.5px solid #C5E4A7', borderRadius: 12,
-    padding: '13px 16px', cursor: 'pointer', fontSize: 14, fontWeight: 500, color: '#333',
-    boxShadow: '0 2px 8px rgba(0,0,0,0.06)', marginBottom: 10, fontFamily: 'inherit'
-  }
-
-  const cardStyle = {
-    position: 'relative', zIndex: 2,
-    background: 'rgba(255,255,255,0.88)',
-    backdropFilter: 'blur(16px)',
-    borderRadius: 28, padding: '36px 28px',
-    width: '100%', maxWidth: 320,
-    display: 'flex', flexDirection: 'column', alignItems: 'center',
-    boxShadow: '0 8px 40px rgba(39,80,10,0.15)',
-    border: '0.5px solid rgba(197,228,167,0.6)'
-  }
+  const inputStyle = { width: '100%', border: '0.5px solid #C5E4A7', borderRadius: 12, padding: '12px 14px', fontSize: 14, outline: 'none', fontFamily: 'inherit', background: '#fff', color: '#1a1a1a', marginBottom: 10 }
+  const btnGreen = { width: '100%', background: '#3B6D11', color: '#EAF3DE', border: 'none', borderRadius: 12, padding: '13px 16px', fontSize: 14, fontWeight: 500, cursor: 'pointer', marginBottom: 10, fontFamily: 'inherit' }
+  const btnWhite = { width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, background: '#fff', border: '0.5px solid #C5E4A7', borderRadius: 12, padding: '13px 16px', cursor: 'pointer', fontSize: 14, fontWeight: 500, color: '#333', boxShadow: '0 2px 8px rgba(0,0,0,0.06)', marginBottom: 10, fontFamily: 'inherit' }
+  const cardStyle = { position: 'relative', zIndex: 2, background: 'rgba(255,255,255,0.88)', backdropFilter: 'blur(16px)', borderRadius: 28, padding: '36px 28px', width: '100%', maxWidth: 320, display: 'flex', flexDirection: 'column', alignItems: 'center', boxShadow: '0 8px 40px rgba(39,80,10,0.15)', border: '0.5px solid rgba(197,228,167,0.6)' }
 
   const googleIcon = (
     <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
@@ -202,63 +159,51 @@ function LoginScreen() {
         <div style={cardStyle}>
           <div style={{ marginBottom: 20 }}>{plantIcon}</div>
           <h1 style={{ fontSize: 28, fontWeight: 500, color: '#27500A', marginBottom: 6, letterSpacing: -0.5 }}>plantinha</h1>
-          <p style={{ fontSize: 14, color: '#888780', textAlign: 'center', marginBottom: 28, lineHeight: 1.5 }}>
-            A rede social para quem ama plantas 🌿
-          </p>
-          <button onClick={signInGoogle} style={btnWhite}>{googleIcon} Entrar com Google</button>
+          <p style={{ fontSize: 14, color: '#888780', textAlign: 'center', marginBottom: 28, lineHeight: 1.5 }}>{t.tagline}</p>
+          <button onClick={signInGoogle} style={btnWhite}>{googleIcon} {t.signInGoogle}</button>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', margin: '2px 0 10px' }}>
             <div style={{ flex: 1, height: 0.5, background: '#C5E4A7' }} />
             <span style={{ fontSize: 12, color: '#B4B2A9' }}>ou</span>
             <div style={{ flex: 1, height: 0.5, background: '#C5E4A7' }} />
           </div>
-          <button onClick={() => setMode('login')} style={btnGreen}>Entrar com e-mail</button>
-          <button onClick={() => setMode('register')} style={{ ...btnWhite, marginBottom: 0 }}>Criar conta</button>
+          <button onClick={() => setMode('login')} style={btnGreen}>{t.signInEmail}</button>
+          <button onClick={() => setMode('register')} style={{ ...btnWhite, marginBottom: 0 }}>{t.createAccount}</button>
         </div>
       )}
 
       {mode === 'login' && (
         <div style={cardStyle}>
-          <button onClick={() => setMode('home')} style={{ alignSelf: 'flex-start', background: 'none', border: 'none', color: '#888780', cursor: 'pointer', fontSize: 13, marginBottom: 16, padding: 0, fontFamily: 'inherit' }}>← Voltar</button>
-          <h2 style={{ fontSize: 20, fontWeight: 500, color: '#27500A', marginBottom: 20, alignSelf: 'flex-start' }}>Entrar</h2>
-          <input style={inputStyle} type="email" placeholder="E-mail" value={email} onChange={e => setEmail(e.target.value)} />
-          <input style={inputStyle} type="password" placeholder="Senha" value={password} onChange={e => setPassword(e.target.value)} />
-          <button onClick={signIn} disabled={loading} style={{ ...btnGreen, marginTop: 4 }}>
-            {loading ? 'Entrando...' : 'Entrar'}
-          </button>
-          <button onClick={() => setMode('register')} style={{ background: 'none', border: 'none', color: '#3B6D11', fontSize: 13, cursor: 'pointer', fontFamily: 'inherit' }}>
-            Não tem conta? Cadastre-se
-          </button>
+          <button onClick={() => setMode('home')} style={{ alignSelf: 'flex-start', background: 'none', border: 'none', color: '#888780', cursor: 'pointer', fontSize: 13, marginBottom: 16, padding: 0, fontFamily: 'inherit' }}>{t.back}</button>
+          <h2 style={{ fontSize: 20, fontWeight: 500, color: '#27500A', marginBottom: 20, alignSelf: 'flex-start' }}>{t.signIn}</h2>
+          <input style={inputStyle} type="email" placeholder={t.email} value={email} onChange={e => setEmail(e.target.value)} />
+          <input style={inputStyle} type="password" placeholder={t.password} value={password} onChange={e => setPassword(e.target.value)} />
+          <button onClick={signIn} disabled={loading} style={{ ...btnGreen, marginTop: 4 }}>{loading ? t.signingIn : t.signIn}</button>
+          <button onClick={() => setMode('register')} style={{ background: 'none', border: 'none', color: '#3B6D11', fontSize: 13, cursor: 'pointer', fontFamily: 'inherit' }}>{t.noAccount}</button>
         </div>
       )}
 
       {mode === 'register' && !sent && (
         <div style={cardStyle}>
-          <button onClick={() => setMode('home')} style={{ alignSelf: 'flex-start', background: 'none', border: 'none', color: '#888780', cursor: 'pointer', fontSize: 13, marginBottom: 16, padding: 0, fontFamily: 'inherit' }}>← Voltar</button>
-          <h2 style={{ fontSize: 20, fontWeight: 500, color: '#27500A', marginBottom: 20, alignSelf: 'flex-start' }}>Criar conta</h2>
-          <input style={inputStyle} type="text" placeholder="Nome de usuário" value={username} onChange={e => setUsername(e.target.value)} />
-          <input style={inputStyle} type="email" placeholder="E-mail" value={email} onChange={e => setEmail(e.target.value)} />
-          <input style={inputStyle} type="password" placeholder="Senha (mín. 6 caracteres)" value={password} onChange={e => setPassword(e.target.value)} />
-          <button onClick={register} disabled={loading} style={{ ...btnGreen, marginTop: 4 }}>
-            {loading ? 'Criando conta...' : 'Criar conta'}
-          </button>
-          <button onClick={() => setMode('login')} style={{ background: 'none', border: 'none', color: '#3B6D11', fontSize: 13, cursor: 'pointer', fontFamily: 'inherit' }}>
-            Já tem conta? Entre
-          </button>
+          <button onClick={() => setMode('home')} style={{ alignSelf: 'flex-start', background: 'none', border: 'none', color: '#888780', cursor: 'pointer', fontSize: 13, marginBottom: 16, padding: 0, fontFamily: 'inherit' }}>{t.back}</button>
+          <h2 style={{ fontSize: 20, fontWeight: 500, color: '#27500A', marginBottom: 20, alignSelf: 'flex-start' }}>{t.createAccount}</h2>
+          <input style={inputStyle} type="text" placeholder={t.username} value={username} onChange={e => setUsername(e.target.value)} />
+          <input style={inputStyle} type="email" placeholder={t.email} value={email} onChange={e => setEmail(e.target.value)} />
+          <input style={inputStyle} type="password" placeholder={t.passwordMin} value={password} onChange={e => setPassword(e.target.value)} />
+          <button onClick={register} disabled={loading} style={{ ...btnGreen, marginTop: 4 }}>{loading ? t.creatingAccount : t.createAccount}</button>
+          <button onClick={() => setMode('login')} style={{ background: 'none', border: 'none', color: '#3B6D11', fontSize: 13, cursor: 'pointer', fontFamily: 'inherit' }}>{t.hasAccount}</button>
         </div>
       )}
 
       {mode === 'register' && sent && (
         <div style={cardStyle}>
           <div style={{ fontSize: 48, marginBottom: 16 }}>📬</div>
-          <h2 style={{ fontSize: 20, fontWeight: 500, color: '#27500A', marginBottom: 8, textAlign: 'center' }}>Confirme seu e-mail</h2>
+          <h2 style={{ fontSize: 20, fontWeight: 500, color: '#27500A', marginBottom: 8, textAlign: 'center' }}>{t.confirmEmail}</h2>
           <p style={{ fontSize: 14, color: '#888780', textAlign: 'center', lineHeight: 1.6, marginBottom: 24 }}>
-            Enviamos um link de confirmação para<br/>
+            {t.confirmEmailText(email)}<br/>
             <strong style={{ color: '#3B6D11' }}>{email}</strong><br/>
-            Clique no link para ativar sua conta.
+            {t.confirmEmailAction}
           </p>
-          <button onClick={() => { setMode('login'); setSent(false) }} style={btnGreen}>
-            Ir para o login
-          </button>
+          <button onClick={() => { setMode('login'); setSent(false) }} style={btnGreen}>{t.goToLogin}</button>
         </div>
       )}
     </div>
