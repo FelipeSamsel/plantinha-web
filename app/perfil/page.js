@@ -45,6 +45,7 @@ export default function PerfilPage() {
   const [showFollowing, setShowFollowing] = useState(false)
   const [followers, setFollowers] = useState([])
   const [following, setFollowing] = useState([])
+  const [selectedPost, setSelectedPost] = useState(null)
   const fileRef = useRef(null)
 
   useEffect(() => { load() }, [])
@@ -87,6 +88,11 @@ export default function PerfilPage() {
 
     if (myPosts) {
       setPosts(myPosts)
+      // atualiza o post selecionado se estava aberto
+      if (selectedPost) {
+        const updated = myPosts.find(p => p.id === selectedPost.id)
+        if (updated) setSelectedPost(updated)
+      }
       setStats({
         posts: myPosts.length,
         likes: myPosts.reduce((a, p) => a + (p.post_likes?.length ?? 0), 0),
@@ -146,8 +152,36 @@ export default function PerfilPage() {
       {showFollowers && <FollowList title={`Seguidores (${stats.followers})`} list={followers} onClose={() => setShowFollowers(false)} />}
       {showFollowing && <FollowList title={`Seguindo (${stats.following})`} list={following} onClose={() => setShowFollowing(false)} />}
 
+      {/* ── MODAL DO POST COMPLETO ── */}
+      {selectedPost && (
+        <div onClick={() => setSelectedPost(null)} style={{
+          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          zIndex: 1000, padding: 20, overflowY: 'auto'
+        }}>
+          <div onClick={e => e.stopPropagation()} style={{
+            width: '100%', maxWidth: 480, position: 'relative'
+          }}>
+            <button onClick={() => setSelectedPost(null)} style={{
+              position: 'absolute', top: -14, right: -14, zIndex: 10,
+              background: 'rgba(255,255,255,0.15)', backdropFilter: 'blur(8px)',
+              border: '0.5px solid rgba(255,255,255,0.25)', color: '#fff',
+              width: 32, height: 32, borderRadius: '50%', fontSize: 16,
+              cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center'
+            }}>✕</button>
+            <PostCard
+              post={selectedPost}
+              user={user}
+              onLike={async (postId) => { await toggleLike(postId) }}
+              onDelete={() => { setSelectedPost(null); load() }}
+              onTagClick={() => {}}
+            />
+          </div>
+        </div>
+      )}
+
       {/* ── HEADER DO PERFIL ── */}
-      <div style={{ textAlign: 'center', marginBottom: 32 }}>
+      <div style={{ textAlign: 'center', marginBottom: 28 }}>
         <div style={{ position: 'relative', width: 88, height: 88, margin: '0 auto 12px' }}>
           {profile?.avatar_url
             ? <img src={profile.avatar_url} alt="avatar" style={{ width: 88, height: 88, borderRadius: '50%', objectFit: 'cover', border: '2px solid #C5E4A7' }} />
@@ -202,22 +236,40 @@ export default function PerfilPage() {
       </div>
 
       {/* Divisor */}
-      <div style={{ borderTop: '0.5px solid #E2F2D4', marginBottom: 20 }} />
+      <div style={{ borderTop: '0.5px solid #E2F2D4', marginBottom: 16 }} />
 
-      {/* ── POSTS ESTILO FEED ── */}
+      {/* ── GRID DE FOTOS ── */}
       {posts.length === 0 && (
         <p style={{ textAlign: 'center', color: '#888', fontSize: 13, marginTop: 40 }}>Nenhum post ainda 🌱</p>
       )}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 3 }}>
         {posts.map(post => (
-          <PostCard
+          <div
             key={post.id}
-            post={post}
-            user={user}
-            onLike={toggleLike}
-            onDelete={load}
-            onTagClick={() => {}}
-          />
+            onClick={() => setSelectedPost(post)}
+            style={{ aspectRatio: '1', borderRadius: 4, background: '#EAF3DE', overflow: 'hidden', cursor: 'pointer', position: 'relative' }}
+            onMouseOver={e => e.currentTarget.querySelector('.overlay').style.opacity = '1'}
+            onMouseOut={e => e.currentTarget.querySelector('.overlay').style.opacity = '0'}
+          >
+            {post.image_url
+              ? <img src={post.image_url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+              : <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 28 }}>🌿</div>
+            }
+            {/* overlay com curtidas e comentários no hover */}
+            <div className="overlay" style={{
+              position: 'absolute', inset: 0,
+              background: 'rgba(0,0,0,0.35)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              gap: 16, opacity: 0, transition: 'opacity 0.15s'
+            }}>
+              <span style={{ color: '#fff', fontSize: 13, fontWeight: 600 }}>
+                ♥ {post.post_likes?.length ?? 0}
+              </span>
+              <span style={{ color: '#fff', fontSize: 13, fontWeight: 600 }}>
+                💬 {post.comments?.length ?? 0}
+              </span>
+            </div>
+          </div>
         ))}
       </div>
     </div>
