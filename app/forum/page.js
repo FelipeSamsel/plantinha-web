@@ -18,6 +18,138 @@ function timeAgo(date) {
   return `${Math.floor(diff / 86400)}d`
 }
 
+function Avatar({ profile, size = 34 }) {
+  const initial = (profile?.username?.[0] ?? '?').toUpperCase()
+  return (
+    <div style={{
+      width: size, height: size, borderRadius: '50%', flexShrink: 0,
+      overflow: 'hidden', background: '#EAF3DE',
+      display: 'flex', alignItems: 'center', justifyContent: 'center'
+    }}>
+      {profile?.avatar_url
+        ? <img src={profile.avatar_url} style={{ width: '100%', height: '100%', objectFit: 'cover' }} alt="" />
+        : <span style={{ fontSize: size * 0.38, fontWeight: 600, color: '#3B6D11' }}>{initial}</span>
+      }
+    </div>
+  )
+}
+
+// Monta árvore: replies raiz + seus filhos aninhados
+function buildTree(replies) {
+  const map = {}
+  replies.forEach(r => { map[r.id] = { ...r, children: [] } })
+  const roots = []
+  replies.forEach(r => {
+    if (r.parent_reply_id && map[r.parent_reply_id]) {
+      map[r.parent_reply_id].children.push(map[r.id])
+    } else {
+      roots.push(map[r.id])
+    }
+  })
+  return roots
+}
+
+function ReplyItem({ reply, user, onDelete, onReply, replyingTo, setReplyingTo, replyText, setReplyText, sendSubReply, loadingSubReply, depth = 0 }) {
+  const isOwner = user && user.id === reply.user_id
+  const isReplying = replyingTo === reply.id
+  const maxDepth = 4 // indentação máxima visual
+  const indent = Math.min(depth, maxDepth) * 20
+
+  return (
+    <div style={{ marginLeft: indent }}>
+      <div style={{ display: 'flex', gap: 10, padding: '10px 20px 4px', alignItems: 'flex-start' }}>
+        {/* linha vertical de indentação */}
+        {depth > 0 && (
+          <div style={{
+            position: 'absolute', left: 20 + indent - 12,
+            width: 2, height: '100%', background: '#E2F2D4', borderRadius: 2
+          }} />
+        )}
+        <Avatar profile={reply.profiles} size={30} />
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, flexWrap: 'wrap', marginBottom: 3 }}>
+            <span style={{ fontWeight: 600, fontSize: 13, color: '#1a1a1a' }}>
+              {reply.profiles?.username ?? 'usuário'}
+            </span>
+            <span style={{ fontSize: 11, color: '#B4B2A9' }}>{timeAgo(reply.created_at)}</span>
+            {isOwner && (
+              <button onClick={() => onDelete(reply.id)} style={{
+                background: 'none', border: 'none', cursor: 'pointer',
+                color: '#B4B2A9', fontSize: 11, padding: 0
+              }}
+                onMouseOver={e => e.target.style.color = '#993C1D'}
+                onMouseOut={e => e.target.style.color = '#B4B2A9'}>
+                excluir
+              </button>
+            )}
+          </div>
+          <p style={{ fontSize: 13, color: '#333', lineHeight: 1.5, marginBottom: 4 }}>{reply.body}</p>
+          {user && (
+            <button onClick={() => setReplyingTo(isReplying ? null : reply.id)} style={{
+              background: 'none', border: 'none', cursor: 'pointer',
+              color: isReplying ? '#3B6D11' : '#B4B2A9', fontSize: 11,
+              fontWeight: isReplying ? 600 : 400, padding: 0
+            }}>
+              {isReplying ? 'cancelar' : 'responder'}
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Input inline de resposta */}
+      {isReplying && (
+        <div style={{
+          marginLeft: indent + 40, marginRight: 20, marginBottom: 8,
+          display: 'flex', gap: 8, alignItems: 'center'
+        }}>
+          <input
+            autoFocus
+            value={replyText}
+            onChange={e => setReplyText(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && sendSubReply(reply.id)}
+            placeholder={`Responder @${reply.profiles?.username}...`}
+            style={{
+              flex: 1, border: '1px solid #D6ECC4', borderRadius: 20,
+              padding: '8px 14px', fontSize: 13, outline: 'none',
+              fontFamily: 'inherit', background: '#F4FAF0', color: '#27500A'
+            }}
+          />
+          <button
+            onClick={() => sendSubReply(reply.id)}
+            disabled={loadingSubReply || !replyText.trim()}
+            style={{
+              background: replyText.trim() ? '#3B6D11' : '#C5E4A7',
+              border: 'none', borderRadius: 20, padding: '8px 14px',
+              fontSize: 13, fontWeight: 500, color: '#EAF3DE',
+              cursor: replyText.trim() ? 'pointer' : 'default', fontFamily: 'inherit',
+              whiteSpace: 'nowrap'
+            }}>
+            {loadingSubReply ? '...' : 'Enviar'}
+          </button>
+        </div>
+      )}
+
+      {/* Filhos recursivos */}
+      {reply.children?.map(child => (
+        <ReplyItem
+          key={child.id}
+          reply={child}
+          user={user}
+          onDelete={onDelete}
+          onReply={onReply}
+          replyingTo={replyingTo}
+          setReplyingTo={setReplyingTo}
+          replyText={replyText}
+          setReplyText={setReplyText}
+          sendSubReply={sendSubReply}
+          loadingSubReply={loadingSubReply}
+          depth={depth + 1}
+        />
+      ))}
+    </div>
+  )
+}
+
 export default function ForumPage() {
   const [posts, setPosts] = useState([])
   const [filter, setFilter] = useState(null)
@@ -32,7 +164,12 @@ export default function ForumPage() {
   const [newReply, setNewReply] = useState('')
   const [loadingReply, setLoadingReply] = useState(false)
 
-  // imagem no formulário
+  // sub-respostas
+  const [replyingTo, setReplyingTo] = useState(null)
+  const [replyText, setReplyText] = useState('')
+  const [loadingSubReply, setLoadingSubReply] = useState(false)
+
+  // imagem
   const [imageFile, setImageFile] = useState(null)
   const [imagePreview, setImagePreview] = useState(null)
   const fileInputRef = useRef(null)
@@ -74,7 +211,6 @@ export default function ForumPage() {
   async function publish() {
     if (!title || !category) return alert('Escolha uma categoria e escreva sua pergunta.')
     setLoading(true)
-
     let image_url = null
     if (imageFile) {
       const ext = imageFile.name.split('.').pop()
@@ -85,7 +221,6 @@ export default function ForumPage() {
         image_url = urlData.publicUrl
       }
     }
-
     await supabase.from('forum_posts').insert({ user_id: user.id, title, body, category, image_url })
     setTitle(''); setBody(''); setCategory(null); setShowForm(false)
     setImageFile(null); setImagePreview(null)
@@ -99,7 +234,8 @@ export default function ForumPage() {
     await supabase.from('forum_replies').insert({
       forum_post_id: selectedPost.id,
       user_id: user.id,
-      body: newReply.trim()
+      body: newReply.trim(),
+      parent_reply_id: null
     })
     if (selectedPost.user_id !== user.id) {
       const { data: profile } = await supabase.from('profiles').select('username').eq('id', user.id).single()
@@ -117,6 +253,34 @@ export default function ForumPage() {
     setLoadingReply(false)
   }
 
+  async function sendSubReply(parentReplyId) {
+    if (!replyText.trim()) return
+    setLoadingSubReply(true)
+    const parentReply = replies.find(r => r.id === parentReplyId)
+    await supabase.from('forum_replies').insert({
+      forum_post_id: selectedPost.id,
+      user_id: user.id,
+      body: replyText.trim(),
+      parent_reply_id: parentReplyId
+    })
+    // notifica o dono da reply pai (se não for ele mesmo)
+    if (parentReply && parentReply.user_id !== user.id) {
+      const { data: profile } = await supabase.from('profiles').select('username').eq('id', user.id).single()
+      await supabase.from('notifications').insert({
+        user_id: parentReply.user_id,
+        from_user_id: user.id,
+        type: 'forum_reply',
+        forum_post_id: selectedPost.id,
+        message: `${profile?.username ?? 'Alguém'} respondeu seu comentário no tópico: "${selectedPost.title.slice(0, 40)}..."`
+      })
+    }
+    setReplyText('')
+    setReplyingTo(null)
+    await loadReplies(selectedPost.id)
+    load()
+    setLoadingSubReply(false)
+  }
+
   async function deleteReply(replyId) {
     await supabase.from('forum_replies').delete().eq('id', replyId)
     loadReplies(selectedPost.id)
@@ -130,45 +294,39 @@ export default function ForumPage() {
     load()
   }
 
+  const replyTree = buildTree(replies)
+
   return (
     <div>
 
       {/* ── MODAL DO TÓPICO ── */}
       {selectedPost && (
-        <div onClick={() => setSelectedPost(null)} style={{
+        <div onClick={() => { setSelectedPost(null); setReplyingTo(null); setReplyText('') }} style={{
           position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           zIndex: 1000, padding: 20
         }}>
           <div onClick={e => e.stopPropagation()} style={{
             background: '#fff', borderRadius: 20,
-            width: '100%', maxWidth: 860,
-            maxHeight: '90vh',
+            width: '100%', maxWidth: 860, maxHeight: '90vh',
             display: 'flex', flexDirection: 'row',
-            overflow: 'hidden',
-            boxShadow: '0 12px 48px rgba(0,0,0,0.2)'
-          }}
-            className="forum-modal-inner">
+            overflow: 'hidden', boxShadow: '0 12px 48px rgba(0,0,0,0.2)'
+          }} className="forum-modal-inner">
 
-            {/* Lado esquerdo — imagem (só se tiver) */}
+            {/* Imagem lateral esquerda */}
             {selectedPost.image_url && (
               <div style={{
                 flex: '0 0 420px', background: '#0a0a0a',
                 display: 'flex', alignItems: 'center', justifyContent: 'center'
               }} className="forum-modal-img-col">
-                <img
-                  src={selectedPost.image_url}
-                  alt=""
-                  style={{ width: '100%', height: '100%', objectFit: 'contain', maxHeight: '90vh' }}
-                />
+                <img src={selectedPost.image_url} alt=""
+                  style={{ width: '100%', height: '100%', objectFit: 'contain', maxHeight: '90vh' }} />
               </div>
             )}
 
-            {/* Lado direito — conteúdo */}
-            <div style={{
-              flex: 1, display: 'flex', flexDirection: 'column',
-              minWidth: 0, maxHeight: '90vh'
-            }}>
+            {/* Conteúdo direito */}
+            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, maxHeight: '90vh' }}>
+
               {/* Header */}
               <div style={{
                 padding: '16px 20px', borderBottom: '0.5px solid #E2F2D4',
@@ -176,7 +334,6 @@ export default function ForumPage() {
                 flexShrink: 0, gap: 12
               }}>
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  {/* Badge categoria */}
                   {selectedPost.category && (() => {
                     const [bg, fg] = BADGE[selectedPost.category] ?? ['#F1EFE8', '#444']
                     return (
@@ -195,76 +352,50 @@ export default function ForumPage() {
                     </p>
                   )}
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    {selectedPost.profiles?.avatar_url
-                      ? <img src={selectedPost.profiles.avatar_url} style={{ width: 22, height: 22, borderRadius: '50%', objectFit: 'cover' }} alt="" />
-                      : <div style={{ width: 22, height: 22, borderRadius: '50%', background: '#EAF3DE', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11 }}>🪴</div>
-                    }
+                    <Avatar profile={selectedPost.profiles} size={22} />
                     <span style={{ fontSize: 12, color: '#B4B2A9' }}>por {selectedPost.profiles?.username}</span>
                   </div>
                 </div>
-                <button onClick={() => setSelectedPost(null)} style={{
+                <button onClick={() => { setSelectedPost(null); setReplyingTo(null); setReplyText('') }} style={{
                   background: 'none', border: 'none', fontSize: 20, cursor: 'pointer',
                   color: '#B4B2A9', flexShrink: 0, lineHeight: 1, padding: 2
                 }}>✕</button>
               </div>
 
-              {/* Imagem no mobile (quando não tem coluna lateral) */}
+              {/* Imagem mobile */}
               {selectedPost.image_url && (
                 <div style={{ display: 'none' }} className="forum-modal-img-mobile">
                   <img src={selectedPost.image_url} alt=""
-                    style={{ width: '100%', maxHeight: 260, objectFit: 'cover' }} />
+                    style={{ width: '100%', maxHeight: 220, objectFit: 'cover' }} />
                 </div>
               )}
 
-              {/* Respostas */}
-              <div style={{ flex: 1, overflowY: 'auto', padding: '8px 0' }}>
-                {replies.length === 0 && (
+              {/* Lista de respostas em árvore */}
+              <div style={{ flex: 1, overflowY: 'auto', padding: '8px 0', position: 'relative' }}>
+                {replyTree.length === 0 && (
                   <p style={{ textAlign: 'center', color: '#888', fontSize: 13, padding: 32 }}>
                     Nenhuma resposta ainda. Seja o primeiro! 🌱
                   </p>
                 )}
-                {replies.map(reply => {
-                  const initial = (reply.profiles?.username?.[0] ?? '?').toUpperCase()
-                  const isOwner = user && user.id === reply.user_id
-                  return (
-                    <div key={reply.id} style={{
-                      display: 'flex', gap: 10, padding: '10px 20px', alignItems: 'flex-start'
-                    }}>
-                      <div style={{
-                        width: 34, height: 34, borderRadius: '50%', flexShrink: 0,
-                        overflow: 'hidden', background: '#EAF3DE',
-                        display: 'flex', alignItems: 'center', justifyContent: 'center'
-                      }}>
-                        {reply.profiles?.avatar_url
-                          ? <img src={reply.profiles.avatar_url} style={{ width: '100%', height: '100%', objectFit: 'cover' }} alt="" />
-                          : <span style={{ fontSize: 13, fontWeight: 600, color: '#3B6D11' }}>{initial}</span>
-                        }
-                      </div>
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, marginBottom: 3, flexWrap: 'wrap' }}>
-                          <span style={{ fontWeight: 600, fontSize: 13, color: '#1a1a1a' }}>
-                            {reply.profiles?.username ?? 'usuário'}
-                          </span>
-                          <span style={{ fontSize: 11, color: '#B4B2A9' }}>{timeAgo(reply.created_at)}</span>
-                          {isOwner && (
-                            <button onClick={() => deleteReply(reply.id)} style={{
-                              background: 'none', border: 'none', cursor: 'pointer',
-                              color: '#B4B2A9', fontSize: 11, padding: 0
-                            }}
-                              onMouseOver={e => e.target.style.color = '#993C1D'}
-                              onMouseOut={e => e.target.style.color = '#B4B2A9'}>
-                              excluir
-                            </button>
-                          )}
-                        </div>
-                        <p style={{ fontSize: 13, color: '#333', lineHeight: 1.5 }}>{reply.body}</p>
-                      </div>
-                    </div>
-                  )
-                })}
+                {replyTree.map(reply => (
+                  <ReplyItem
+                    key={reply.id}
+                    reply={reply}
+                    user={user}
+                    onDelete={deleteReply}
+                    onReply={sendSubReply}
+                    replyingTo={replyingTo}
+                    setReplyingTo={setReplyingTo}
+                    replyText={replyText}
+                    setReplyText={setReplyText}
+                    sendSubReply={sendSubReply}
+                    loadingSubReply={loadingSubReply}
+                    depth={0}
+                  />
+                ))}
               </div>
 
-              {/* Input resposta */}
+              {/* Input novo comentário raiz */}
               {user ? (
                 <div style={{
                   padding: '12px 20px', borderTop: '0.5px solid #E2F2D4',
@@ -274,28 +405,25 @@ export default function ForumPage() {
                     value={newReply}
                     onChange={e => setNewReply(e.target.value)}
                     onKeyDown={e => e.key === 'Enter' && sendReply()}
-                    placeholder="Escreva sua resposta..."
+                    placeholder="Escreva um comentário..."
                     style={{
                       flex: 1, border: '1px solid #D6ECC4', borderRadius: 20,
                       padding: '9px 14px', fontSize: 13, outline: 'none',
                       fontFamily: 'inherit', background: '#F4FAF0', color: '#27500A'
                     }}
                   />
-                  <button
-                    onClick={sendReply}
-                    disabled={loadingReply || !newReply.trim()}
-                    style={{
-                      background: newReply.trim() ? '#3B6D11' : '#C5E4A7',
-                      border: 'none', borderRadius: 20, padding: '9px 18px',
-                      fontSize: 13, fontWeight: 500, color: '#EAF3DE',
-                      cursor: newReply.trim() ? 'pointer' : 'default', fontFamily: 'inherit'
-                    }}>
+                  <button onClick={sendReply} disabled={loadingReply || !newReply.trim()} style={{
+                    background: newReply.trim() ? '#3B6D11' : '#C5E4A7',
+                    border: 'none', borderRadius: 20, padding: '9px 18px',
+                    fontSize: 13, fontWeight: 500, color: '#EAF3DE',
+                    cursor: newReply.trim() ? 'pointer' : 'default', fontFamily: 'inherit'
+                  }}>
                     {loadingReply ? '...' : 'Enviar'}
                   </button>
                 </div>
               ) : (
                 <p style={{ padding: '12px 20px', fontSize: 13, color: '#B4B2A9', textAlign: 'center', borderTop: '0.5px solid #E2F2D4' }}>
-                  Faça login para responder
+                  Faça login para comentar
                 </p>
               )}
             </div>
@@ -317,7 +445,6 @@ export default function ForumPage() {
       {/* ── FORMULÁRIO NOVO TÓPICO ── */}
       {showForm && (
         <div style={{ background: '#fff', borderRadius: 16, border: '0.5px solid #E2F2D4', padding: 16, marginBottom: 20 }}>
-          {/* Categorias */}
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
             {CATS.slice(1).map(c => (
               <button key={c} onClick={() => setCategory(c)} style={{
@@ -329,67 +456,34 @@ export default function ForumPage() {
               }}>{c}</button>
             ))}
           </div>
-
-          <input
-            value={title}
-            onChange={e => setTitle(e.target.value)}
-            placeholder="Sua pergunta..."
-            style={{
-              width: '100%', border: '0.5px solid #C5E4A7', borderRadius: 10,
-              padding: 10, fontSize: 13, marginBottom: 10, outline: 'none',
-              fontFamily: 'inherit', boxSizing: 'border-box'
-            }}
-          />
-          <textarea
-            value={body}
-            onChange={e => setBody(e.target.value)}
-            placeholder="Mais detalhes (opcional)..."
-            rows={3}
-            style={{
-              width: '100%', border: '0.5px solid #C5E4A7', borderRadius: 10,
-              padding: 10, fontSize: 13, fontFamily: 'inherit', resize: 'none',
-              marginBottom: 12, outline: 'none', boxSizing: 'border-box'
-            }}
-          />
-
-          {/* Upload de imagem */}
+          <input value={title} onChange={e => setTitle(e.target.value)} placeholder="Sua pergunta..."
+            style={{ width: '100%', border: '0.5px solid #C5E4A7', borderRadius: 10, padding: 10, fontSize: 13, marginBottom: 10, outline: 'none', fontFamily: 'inherit', boxSizing: 'border-box' }} />
+          <textarea value={body} onChange={e => setBody(e.target.value)} placeholder="Mais detalhes (opcional)..." rows={3}
+            style={{ width: '100%', border: '0.5px solid #C5E4A7', borderRadius: 10, padding: 10, fontSize: 13, fontFamily: 'inherit', resize: 'none', marginBottom: 12, outline: 'none', boxSizing: 'border-box' }} />
           <div style={{ marginBottom: 12 }}>
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="image/*"
-              onChange={handleImageChange}
-              style={{ display: 'none' }}
-            />
+            <input ref={fileInputRef} type="file" accept="image/*" onChange={handleImageChange} style={{ display: 'none' }} />
             {imagePreview ? (
-              <div style={{ position: 'relative', display: 'inline-block' }}>
-                <img src={imagePreview} alt="" style={{
-                  width: '100%', maxHeight: 200, objectFit: 'cover',
-                  borderRadius: 10, display: 'block'
-                }} />
+              <div style={{ position: 'relative' }}>
+                <img src={imagePreview} alt="" style={{ width: '100%', maxHeight: 200, objectFit: 'cover', borderRadius: 10, display: 'block' }} />
                 <button onClick={() => { setImageFile(null); setImagePreview(null) }} style={{
-                  position: 'absolute', top: 8, right: 8,
-                  background: 'rgba(0,0,0,0.55)', border: 'none', borderRadius: '50%',
-                  width: 28, height: 28, color: '#fff', cursor: 'pointer', fontSize: 14,
-                  display: 'flex', alignItems: 'center', justifyContent: 'center'
+                  position: 'absolute', top: 8, right: 8, background: 'rgba(0,0,0,0.55)',
+                  border: 'none', borderRadius: '50%', width: 28, height: 28, color: '#fff',
+                  cursor: 'pointer', fontSize: 14, display: 'flex', alignItems: 'center', justifyContent: 'center'
                 }}>✕</button>
               </div>
             ) : (
               <button onClick={() => fileInputRef.current?.click()} style={{
-                display: 'flex', alignItems: 'center', gap: 8,
-                border: '1px dashed #C5E4A7', borderRadius: 10, padding: '10px 16px',
-                background: '#F4FAF0', cursor: 'pointer', color: '#888780',
-                fontSize: 13, width: '100%', justifyContent: 'center'
+                display: 'flex', alignItems: 'center', gap: 8, border: '1px dashed #C5E4A7',
+                borderRadius: 10, padding: '10px 16px', background: '#F4FAF0', cursor: 'pointer',
+                color: '#888780', fontSize: 13, width: '100%', justifyContent: 'center'
               }}>
                 <span>🖼️</span> Adicionar imagem (opcional)
               </button>
             )}
           </div>
-
           <button onClick={publish} disabled={loading} style={{
-            background: '#3B6D11', color: '#EAF3DE', border: 'none',
-            borderRadius: 10, padding: '10px 24px', fontSize: 14,
-            fontWeight: 500, cursor: 'pointer', width: '100%'
+            background: '#3B6D11', color: '#EAF3DE', border: 'none', borderRadius: 10,
+            padding: '10px 24px', fontSize: 14, fontWeight: 500, cursor: 'pointer', width: '100%'
           }}>
             {loading ? 'Enviando...' : 'Enviar pergunta'}
           </button>
@@ -404,9 +498,7 @@ export default function ForumPage() {
             border: '0.5px solid #C5E4A7',
             background: filter === f ? '#3B6D11' : '#fff',
             color: filter === f ? '#EAF3DE' : '#888780'
-          }}>
-            {f ?? 'todos'}
-          </button>
+          }}>{f ?? 'todos'}</button>
         ))}
       </div>
 
@@ -416,47 +508,31 @@ export default function ForumPage() {
           const [bg, fg] = BADGE[post.category] ?? ['#F1EFE8', '#444']
           const isOwner = user && user.id === post.user_id
           return (
-            <div key={post.id}
-              onClick={() => setSelectedPost(post)}
-              style={{
-                background: '#fff', borderRadius: 14, border: '0.5px solid #E2F2D4',
-                overflow: 'hidden', cursor: 'pointer',
-                transition: 'box-shadow 0.15s'
-              }}
+            <div key={post.id} onClick={() => setSelectedPost(post)} style={{
+              background: '#fff', borderRadius: 14, border: '0.5px solid #E2F2D4',
+              overflow: 'hidden', cursor: 'pointer', transition: 'box-shadow 0.15s'
+            }}
               onMouseOver={e => e.currentTarget.style.boxShadow = '0 2px 12px rgba(0,0,0,0.07)'}
               onMouseOut={e => e.currentTarget.style.boxShadow = 'none'}>
-
-              {/* Imagem de capa do card (se tiver) */}
               {post.image_url && (
-                <img src={post.image_url} alt=""
-                  style={{ width: '100%', height: 140, objectFit: 'cover', display: 'block' }} />
+                <img src={post.image_url} alt="" style={{ width: '100%', height: 140, objectFit: 'cover', display: 'block' }} />
               )}
-
               <div style={{ padding: 16 }}>
                 <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 8 }}>
-                  <span style={{
-                    background: bg, color: fg, fontSize: 10, fontWeight: 500,
-                    padding: '3px 9px', borderRadius: 20, display: 'inline-block'
-                  }}>{post.category}</span>
+                  <span style={{ background: bg, color: fg, fontSize: 10, fontWeight: 500, padding: '3px 9px', borderRadius: 20 }}>{post.category}</span>
                   {isOwner && (
-                    <button
-                      onClick={e => { e.stopPropagation(); deleteForumPost(post.id) }}
-                      style={{
-                        background: 'none', border: 'none', cursor: 'pointer',
-                        color: '#B4B2A9', fontSize: 12, padding: '2px 6px', borderRadius: 6
-                      }}
+                    <button onClick={e => { e.stopPropagation(); deleteForumPost(post.id) }} style={{
+                      background: 'none', border: 'none', cursor: 'pointer', color: '#B4B2A9', fontSize: 12, padding: '2px 6px', borderRadius: 6
+                    }}
                       onMouseOver={e => e.target.style.color = '#993C1D'}
-                      onMouseOut={e => e.target.style.color = '#B4B2A9'}>
-                      excluir
-                    </button>
+                      onMouseOut={e => e.target.style.color = '#B4B2A9'}>excluir</button>
                   )}
                 </div>
                 <p style={{ fontWeight: 500, fontSize: 14, color: '#1a1a1a', marginBottom: 6 }}>{post.title}</p>
                 {post.body && (
-                  <p style={{
-                    fontSize: 13, color: '#888780', marginBottom: 8, lineHeight: 1.5,
-                    display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden'
-                  }}>{post.body}</p>
+                  <p style={{ fontSize: 13, color: '#888780', marginBottom: 8, lineHeight: 1.5, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
+                    {post.body}
+                  </p>
                 )}
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: '#B4B2A9' }}>
                   <span>{post.profiles?.username}</span>
@@ -471,7 +547,6 @@ export default function ForumPage() {
         )}
       </div>
 
-      {/* CSS responsivo do modal */}
       <style>{`
         @media (max-width: 700px) {
           .forum-modal-inner {
@@ -479,9 +554,7 @@ export default function ForumPage() {
             max-width: 100% !important;
             border-radius: 20px 20px 0 0 !important;
             position: fixed !important;
-            bottom: 0 !important;
-            left: 0 !important;
-            right: 0 !important;
+            bottom: 0 !important; left: 0 !important; right: 0 !important;
             max-height: 92vh !important;
             align-self: flex-end !important;
           }
