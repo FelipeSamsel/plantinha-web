@@ -4,6 +4,131 @@ import { supabase } from '../lib/supabase'
 import PostCard from '../components/PostCard'
 import { useT } from '../lib/i18n'
 
+// ── Painel lateral de sugestões ──────────────────────────────────────
+function SuggestPanel({ user }) {
+  const [suggestions, setSuggestions] = useState([])
+  const [following, setFollowing] = useState(new Set())
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => { if (user) load() }, [user])
+
+  async function load() {
+    setLoading(true)
+
+    // quem eu já sigo
+    const { data: myFollows } = await supabase
+      .from('follows').select('following_id').eq('follower_id', user.id)
+    const myFollowingIds = new Set((myFollows ?? []).map(f => f.following_id))
+    setFollowing(myFollowingIds)
+
+    let candidates = []
+
+    if (myFollowingIds.size > 0) {
+      // quem meus amigos seguem
+      const { data: friendsFollows } = await supabase
+        .from('follows')
+        .select('following_id')
+        .in('follower_id', [...myFollowingIds])
+
+      const freq = {}
+      ;(friendsFollows ?? []).forEach(({ following_id }) => {
+        if (following_id !== user.id && !myFollowingIds.has(following_id)) {
+          freq[following_id] = (freq[following_id] ?? 0) + 1
+        }
+      })
+
+      // ordena por frequência e pega top 10
+      const topIds = Object.entries(freq).sort((a, b) => b[1] - a[1]).slice(0, 10).map(([id]) => id)
+
+      if (topIds.length > 0) {
+        const { data: profiles } = await supabase
+          .from('profiles').select('id, username, avatar_url').in('id', topIds)
+        candidates = (profiles ?? []).sort((a, b) => (freq[b.id] ?? 0) - (freq[a.id] ?? 0))
+      }
+    }
+
+    // se tiver menos de 5 sugestões, completa com usuários aleatórios
+    if (candidates.length < 5) {
+      const excludeIds = [...myFollowingIds, user.id, ...candidates.map(c => c.id)]
+      const { data: random } = await supabase
+        .from('profiles').select('id, username, avatar_url')
+        .not('id', 'in', `(${excludeIds.join(',')})`)
+        .limit(8)
+      const extra = (random ?? []).filter(p => !candidates.find(c => c.id === p.id))
+      candidates = [...candidates, ...extra].slice(0, 8)
+    }
+
+    setSuggestions(candidates)
+    setLoading(false)
+  }
+
+  async function toggleFollow(targetId) {
+    if (following.has(targetId)) {
+      await supabase.from('follows').delete().eq('follower_id', user.id).eq('following_id', targetId)
+      setFollowing(prev => { const s = new Set(prev); s.delete(targetId); return s })
+    } else {
+      await supabase.from('follows').insert({ follower_id: user.id, following_id: targetId })
+      const { data: profile } = await supabase.from('profiles').select('username').eq('id', user.id).single()
+      await supabase.from('notifications').insert({
+        user_id: targetId, from_user_id: user.id, type: 'like',
+        message: `${profile?.username ?? 'Alguém'} começou a seguir você 🌿`
+      })
+      setFollowing(prev => new Set(prev).add(targetId))
+    }
+  }
+
+  if (loading) return (
+    <div style={{ background: '#fff', borderRadius: 16, border: '0.5px solid #E2F2D4', padding: '16px' }}>
+      <p style={{ fontSize: 13, color: '#B4B2A9', textAlign: 'center' }}>Carregando...</p>
+    </div>
+  )
+
+  if (suggestions.length === 0) return null
+
+  return (
+    <div style={{ background: '#fff', borderRadius: 16, border: '0.5px solid #E2F2D4', overflow: 'hidden', position: 'sticky', top: 24 }}>
+      <div style={{ padding: '14px 16px 10px', borderBottom: '0.5px solid #F0F7EC' }}>
+        <p style={{ fontSize: 13, fontWeight: 600, color: '#27500A', margin: 0 }}>🌱 Quem seguir</p>
+      </div>
+      <div style={{ padding: '6px 0' }}>
+        {suggestions.map(profile => {
+          const initial = (profile.username?.[0] ?? '?').toUpperCase()
+          const isFollowing = following.has(profile.id)
+          return (
+            <div key={profile.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 14px' }}>
+              <a href={`/perfil/${profile.id}`} style={{ flexShrink: 0 }}>
+                <div style={{ width: 36, height: 36, borderRadius: '50%', overflow: 'hidden', background: '#EAF3DE', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  {profile.avatar_url
+                    ? <img src={profile.avatar_url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                    : <span style={{ fontSize: 14, fontWeight: 600, color: '#3B6D11' }}>{initial}</span>
+                  }
+                </div>
+              </a>
+              <a href={`/perfil/${profile.id}`} style={{ flex: 1, minWidth: 0, textDecoration: 'none' }}>
+                <p style={{ fontSize: 13, fontWeight: 500, color: '#1a1a1a', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  @{profile.username}
+                </p>
+              </a>
+              <button
+                onClick={() => toggleFollow(profile.id)}
+                style={{
+                  padding: '5px 12px', borderRadius: 20, fontSize: 12, fontWeight: 500,
+                  cursor: 'pointer', border: 'none', flexShrink: 0,
+                  background: isFollowing ? '#EAF3DE' : '#3B6D11',
+                  color: isFollowing ? '#3B6D11' : '#fff',
+                  transition: 'all 0.15s'
+                }}>
+                {isFollowing ? 'Seguindo' : 'Seguir'}
+              </button>
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+// ── Feed principal ───────────────────────────────────────────────────
 export default function FeedPage() {
   const t = useT()
   const [posts, setPosts] = useState([])
@@ -53,10 +178,7 @@ export default function FeedPage() {
       if (post.user_id !== user.id) {
         const { data: profile } = await supabase.from('profiles').select('username').eq('id', user.id).single()
         await supabase.from('notifications').insert({
-          user_id: post.user_id,
-          from_user_id: user.id,
-          type: 'like',
-          post_id: postId,
+          user_id: post.user_id, from_user_id: user.id, type: 'like', post_id: postId,
           message: t.liked(profile?.username ?? 'Alguém')
         })
       }
@@ -68,29 +190,48 @@ export default function FeedPage() {
   if (!user) return <LoginScreen />
 
   return (
-    <div>
-      {activeTag && (
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: '#EAF3DE', borderRadius: 12, padding: '10px 14px', marginBottom: 16, border: '0.5px solid #C5E4A7' }}>
-          <span style={{ fontSize: 14, color: '#27500A', fontWeight: 500 }}>#{activeTag}</span>
-          <button onClick={() => setActiveTag(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#888780', fontSize: 13, display: 'flex', alignItems: 'center', gap: 4 }}>
-            {t.clearFilter}
-          </button>
+    <>
+      {/* Layout de duas colunas no desktop */}
+      <div style={{ display: 'flex', gap: 24, alignItems: 'flex-start' }}>
+
+        {/* Coluna principal — feed */}
+        <div style={{ flex: 1, minWidth: 0 }}>
+          {activeTag && (
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: '#EAF3DE', borderRadius: 12, padding: '10px 14px', marginBottom: 16, border: '0.5px solid #C5E4A7' }}>
+              <span style={{ fontSize: 14, color: '#27500A', fontWeight: 500 }}>#{activeTag}</span>
+              <button onClick={() => setActiveTag(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#888780', fontSize: 13, display: 'flex', alignItems: 'center', gap: 4 }}>
+                {t.clearFilter}
+              </button>
+            </div>
+          )}
+          {posts.length === 0 && (
+            <p style={{ color: '#888', textAlign: 'center', marginTop: 60 }}>
+              {activeTag ? t.noPostsTag(activeTag) : t.noPostsYet}
+            </p>
+          )}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+            {posts.map(post => (
+              <PostCard key={post.id} post={post} user={user} onLike={toggleLike} onDelete={loadPosts} onTagClick={tag => setActiveTag(tag)} />
+            ))}
+          </div>
         </div>
-      )}
-      {posts.length === 0 && (
-        <p style={{ color: '#888', textAlign: 'center', marginTop: 60 }}>
-          {activeTag ? t.noPostsTag(activeTag) : t.noPostsYet}
-        </p>
-      )}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-        {posts.map(post => (
-          <PostCard key={post.id} post={post} user={user} onLike={toggleLike} onDelete={loadPosts} onTagClick={tag => setActiveTag(tag)} />
-        ))}
+
+        {/* Coluna direita — sugestões (some no mobile via CSS) */}
+        <div className="suggest-col" style={{ width: 260, flexShrink: 0 }}>
+          <SuggestPanel user={user} />
+        </div>
       </div>
-    </div>
+
+      <style>{`
+        @media (max-width: 900px) {
+          .suggest-col { display: none !important; }
+        }
+      `}</style>
+    </>
   )
 }
 
+// ── Tela de login (sem alterações) ───────────────────────────────────
 function LoginScreen() {
   const t = useT()
   const [mode, setMode] = useState('home')
