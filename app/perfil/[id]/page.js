@@ -2,7 +2,7 @@
 import { useEffect, useState } from 'react'
 import { useParams } from 'next/navigation'
 import { supabase } from '../../../lib/supabase'
-import PostCard from '../../../components/PostCard'
+import PostCard, { CommentsModal } from '../../../components/PostCard'
 
 function FollowList({ title, list, onClose }) {
   return (
@@ -126,18 +126,13 @@ export default function PublicProfilePage() {
       {showFollowers && <FollowList title={`Seguidores (${stats.followers})`} list={followers} onClose={() => setShowFollowers(false)} />}
       {showFollowing && <FollowList title={`Seguindo (${stats.following})`} list={following} onClose={() => setShowFollowing(false)} />}
 
-      {/* Modal do PostCard — abre direto nos comentários */}
       {selectedPost && (
-        <div onClick={() => setSelectedPost(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.01)', zIndex: 999 }}>
-          <PostCard
-            post={selectedPost}
-            user={currentUser}
-            onLike={toggleLike}
-            onDelete={() => { setSelectedPost(null); load() }}
-            onTagClick={() => {}}
-            autoOpenComments={true}
-          />
-        </div>
+        <CommentsModal
+          post={selectedPost}
+          user={currentUser}
+          onLike={toggleLike}
+          onClose={() => setSelectedPost(null)}
+        />
       )}
 
       {/* Header */}

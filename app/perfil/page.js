@@ -1,7 +1,7 @@
 'use client'
 import { useEffect, useState, useRef } from 'react'
 import { supabase } from '../../lib/supabase'
-import PostCard from '../../components/PostCard'
+import PostCard, { CommentsModal } from '../../components/PostCard'
 
 function FollowList({ title, list, onClose }) {
   return (
@@ -57,9 +57,7 @@ export default function PerfilPage() {
 
     let { data: prof } = await supabase.from('profiles').select('*').eq('id', user.id).maybeSingle()
     if (!prof) {
-      const { data: created } = await supabase.from('profiles')
-        .insert({ id: user.id, username: user.email?.split('@')[0] ?? 'usuario' })
-        .select().single()
+      const { data: created } = await supabase.from('profiles').insert({ id: user.id, username: user.email?.split('@')[0] ?? 'usuario' }).select().single()
       prof = created
     }
     setProfile(prof)
@@ -72,27 +70,16 @@ export default function PerfilPage() {
       .eq('user_id', user.id)
       .order('created_at', { ascending: false })
 
-    const { data: followersData } = await supabase
-      .from('follows')
-      .select('id, follower_id, profiles!follows_follower_id_fkey(id, username, avatar_url)')
-      .eq('following_id', user.id)
+    const { data: followersData } = await supabase.from('follows').select('id, follower_id, profiles!follows_follower_id_fkey(id, username, avatar_url)').eq('following_id', user.id)
     const followersList = followersData ?? []
     setFollowers(followersList.map(f => ({ id: f.follower_id, profiles: f.profiles })))
 
-    const { data: followingData } = await supabase
-      .from('follows')
-      .select('id, following_id, profiles!follows_following_id_fkey(id, username, avatar_url)')
-      .eq('follower_id', user.id)
+    const { data: followingData } = await supabase.from('follows').select('id, following_id, profiles!follows_following_id_fkey(id, username, avatar_url)').eq('follower_id', user.id)
     const followingList = followingData ?? []
     setFollowing(followingList.map(f => ({ id: f.following_id, profiles: f.profiles })))
 
     if (myPosts) {
       setPosts(myPosts)
-      // atualiza o post selecionado se estava aberto
-      if (selectedPost) {
-        const updated = myPosts.find(p => p.id === selectedPost.id)
-        if (updated) setSelectedPost(updated)
-      }
       setStats({
         posts: myPosts.length,
         likes: myPosts.reduce((a, p) => a + (p.post_likes?.length ?? 0), 0),
@@ -112,10 +99,7 @@ export default function PerfilPage() {
       await supabase.from('post_likes').insert({ post_id: postId, user_id: user.id })
       if (post.user_id !== user.id) {
         const { data: profile } = await supabase.from('profiles').select('username').eq('id', user.id).single()
-        await supabase.from('notifications').insert({
-          user_id: post.user_id, from_user_id: user.id, type: 'like', post_id: postId,
-          message: `${profile?.username ?? 'Alguém'} curtiu sua foto 🌿`
-        })
+        await supabase.from('notifications').insert({ user_id: post.user_id, from_user_id: user.id, type: 'like', post_id: postId, message: `${profile?.username ?? 'Alguém'} curtiu sua foto 🌿` })
       }
     }
     load()
@@ -123,8 +107,7 @@ export default function PerfilPage() {
 
   async function save() {
     await supabase.from('profiles').update({ username, bio }).eq('id', user.id)
-    setEditing(false)
-    load()
+    setEditing(false); load()
   }
 
   async function uploadAvatar(e) {
@@ -136,8 +119,7 @@ export default function PerfilPage() {
       const filename = `${user.id}.${ext}`
       await supabase.storage.from('avatars').upload(filename, file, { upsert: true })
       const { data } = supabase.storage.from('avatars').getPublicUrl(filename)
-      const avatarUrl = `${data.publicUrl}?t=${Date.now()}`
-      await supabase.from('profiles').update({ avatar_url: avatarUrl }).eq('id', user.id)
+      await supabase.from('profiles').update({ avatar_url: `${data.publicUrl}?t=${Date.now()}` }).eq('id', user.id)
       load()
     } catch (e) { alert(e.message) }
     finally { setUploadingAvatar(false) }
@@ -152,35 +134,16 @@ export default function PerfilPage() {
       {showFollowers && <FollowList title={`Seguidores (${stats.followers})`} list={followers} onClose={() => setShowFollowers(false)} />}
       {showFollowing && <FollowList title={`Seguindo (${stats.following})`} list={following} onClose={() => setShowFollowing(false)} />}
 
-      {/* ── MODAL DO POST COMPLETO ── */}
       {selectedPost && (
-        <div onClick={() => setSelectedPost(null)} style={{
-          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          zIndex: 1000, padding: 20, overflowY: 'auto'
-        }}>
-          <div onClick={e => e.stopPropagation()} style={{
-            width: '100%', maxWidth: 480, position: 'relative'
-          }}>
-            <button onClick={() => setSelectedPost(null)} style={{
-              position: 'absolute', top: -14, right: -14, zIndex: 10,
-              background: 'rgba(255,255,255,0.15)', backdropFilter: 'blur(8px)',
-              border: '0.5px solid rgba(255,255,255,0.25)', color: '#fff',
-              width: 32, height: 32, borderRadius: '50%', fontSize: 16,
-              cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center'
-            }}>✕</button>
-            <PostCard
-              post={selectedPost}
-              user={user}
-              onLike={async (postId) => { await toggleLike(postId) }}
-              onDelete={() => { setSelectedPost(null); load() }}
-              onTagClick={() => {}}
-            />
-          </div>
-        </div>
+        <CommentsModal
+          post={selectedPost}
+          user={user}
+          onLike={toggleLike}
+          onClose={() => setSelectedPost(null)}
+        />
       )}
 
-      {/* ── HEADER DO PERFIL ── */}
+      {/* Header */}
       <div style={{ textAlign: 'center', marginBottom: 28 }}>
         <div style={{ position: 'relative', width: 88, height: 88, margin: '0 auto 12px' }}>
           {profile?.avatar_url
@@ -195,10 +158,8 @@ export default function PerfilPage() {
 
         {editing ? (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxWidth: 300, margin: '0 auto' }}>
-            <input value={username} onChange={e => setUsername(e.target.value)} placeholder="Username"
-              style={{ border: '0.5px solid #C5E4A7', borderRadius: 10, padding: 9, fontSize: 14, textAlign: 'center', outline: 'none', fontFamily: 'inherit' }} />
-            <input value={bio} onChange={e => setBio(e.target.value)} placeholder="Bio (opcional)"
-              style={{ border: '0.5px solid #C5E4A7', borderRadius: 10, padding: 9, fontSize: 13, textAlign: 'center', outline: 'none', fontFamily: 'inherit' }} />
+            <input value={username} onChange={e => setUsername(e.target.value)} placeholder="Username" style={{ border: '0.5px solid #C5E4A7', borderRadius: 10, padding: 9, fontSize: 14, textAlign: 'center', outline: 'none', fontFamily: 'inherit' }} />
+            <input value={bio} onChange={e => setBio(e.target.value)} placeholder="Bio (opcional)" style={{ border: '0.5px solid #C5E4A7', borderRadius: 10, padding: 9, fontSize: 13, textAlign: 'center', outline: 'none', fontFamily: 'inherit' }} />
             <div style={{ display: 'flex', gap: 8, justifyContent: 'center' }}>
               <button onClick={save} style={{ background: '#3B6D11', color: '#EAF3DE', border: 'none', borderRadius: 10, padding: '8px 20px', fontSize: 13, cursor: 'pointer' }}>Salvar</button>
               <button onClick={() => setEditing(false)} style={{ background: 'transparent', color: '#888780', border: '0.5px solid #C5E4A7', borderRadius: 10, padding: '8px 20px', fontSize: 13, cursor: 'pointer' }}>Cancelar</button>
@@ -208,13 +169,10 @@ export default function PerfilPage() {
           <>
             <p style={{ fontWeight: 500, fontSize: 18, color: '#1a1a1a', marginBottom: 4 }}>{profile?.username}</p>
             {profile?.bio && <p style={{ fontSize: 13, color: '#888780', marginBottom: 8 }}>{profile.bio}</p>}
-            <button onClick={() => setEditing(true)} style={{ background: 'transparent', color: '#3B6D11', border: '0.5px solid #C5E4A7', borderRadius: 20, padding: '5px 14px', fontSize: 12, cursor: 'pointer', marginBottom: 16 }}>
-              editar perfil
-            </button>
+            <button onClick={() => setEditing(true)} style={{ background: 'transparent', color: '#3B6D11', border: '0.5px solid #C5E4A7', borderRadius: 20, padding: '5px 14px', fontSize: 12, cursor: 'pointer', marginBottom: 16 }}>editar perfil</button>
           </>
         )}
 
-        {/* Stats */}
         <div style={{ display: 'flex', justifyContent: 'center', gap: 24, marginTop: 8 }}>
           <div style={{ textAlign: 'center' }}>
             <p style={{ fontWeight: 500, fontSize: 20, color: '#3B6D11' }}>{stats.posts}</p>
@@ -235,39 +193,23 @@ export default function PerfilPage() {
         </div>
       </div>
 
-      {/* Divisor */}
       <div style={{ borderTop: '0.5px solid #E2F2D4', marginBottom: 16 }} />
 
-      {/* ── GRID DE FOTOS ── */}
-      {posts.length === 0 && (
-        <p style={{ textAlign: 'center', color: '#888', fontSize: 13, marginTop: 40 }}>Nenhum post ainda 🌱</p>
-      )}
+      {/* Grid */}
+      {posts.length === 0 && <p style={{ textAlign: 'center', color: '#888', fontSize: 13, marginTop: 40 }}>Nenhum post ainda 🌱</p>}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 3 }}>
         {posts.map(post => (
-          <div
-            key={post.id}
-            onClick={() => setSelectedPost(post)}
+          <div key={post.id} onClick={() => setSelectedPost(post)}
             style={{ aspectRatio: '1', borderRadius: 4, background: '#EAF3DE', overflow: 'hidden', cursor: 'pointer', position: 'relative' }}
-            onMouseOver={e => e.currentTarget.querySelector('.overlay').style.opacity = '1'}
-            onMouseOut={e => e.currentTarget.querySelector('.overlay').style.opacity = '0'}
-          >
+            onMouseOver={e => e.currentTarget.querySelector('.ov')?.style && (e.currentTarget.querySelector('.ov').style.opacity = '1')}
+            onMouseOut={e => e.currentTarget.querySelector('.ov')?.style && (e.currentTarget.querySelector('.ov').style.opacity = '0')}>
             {post.image_url
               ? <img src={post.image_url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
               : <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 28 }}>🌿</div>
             }
-            {/* overlay com curtidas e comentários no hover */}
-            <div className="overlay" style={{
-              position: 'absolute', inset: 0,
-              background: 'rgba(0,0,0,0.35)',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              gap: 16, opacity: 0, transition: 'opacity 0.15s'
-            }}>
-              <span style={{ color: '#fff', fontSize: 13, fontWeight: 600 }}>
-                ♥ {post.post_likes?.length ?? 0}
-              </span>
-              <span style={{ color: '#fff', fontSize: 13, fontWeight: 600 }}>
-                💬 {post.comments?.length ?? 0}
-              </span>
+            <div className="ov" style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.35)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 16, opacity: 0, transition: 'opacity 0.15s' }}>
+              <span style={{ color: '#fff', fontSize: 13, fontWeight: 600 }}>♥ {post.post_likes?.length ?? 0}</span>
+              <span style={{ color: '#fff', fontSize: 13, fontWeight: 600 }}>💬 {post.comments?.length ?? 0}</span>
             </div>
           </div>
         ))}
