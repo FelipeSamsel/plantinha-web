@@ -159,9 +159,12 @@ function CommentsModal({ post, user, onLike, onClose }) {
 
       <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: 20 }}>
         <div onClick={e => e.stopPropagation()} style={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', borderRadius: 20, overflow: 'hidden', width: '100%', maxWidth: isMobile ? 420 : 860, maxHeight: '90vh', boxShadow: '0 8px 40px rgba(0,0,0,0.4)' }}>
-          {!isMobile && (
+          {!isMobile && (post.image_url || post.video_url) && (
             <div style={{ flex: 1, background: '#000', display: 'flex', alignItems: 'center', justifyContent: 'center', minWidth: 0 }}>
-              {post.image_url && <img src={post.image_url} alt="post" style={{ width: '100%', height: '100%', objectFit: 'contain', maxHeight: '90vh' }} />}
+              {post.video_url
+                ? <video src={post.video_url} controls playsInline style={{ width: '100%', maxHeight: '90vh' }} />
+                : <img src={post.image_url} alt="post" style={{ width: '100%', height: '100%', objectFit: 'contain', maxHeight: '90vh' }} />
+              }
             </div>
           )}
           <div style={{ width: isMobile ? '100%' : 340, background: '#fff', display: 'flex', flexDirection: 'column', flexShrink: 0, maxHeight: isMobile ? '90vh' : 'auto' }}>
@@ -172,9 +175,12 @@ function CommentsModal({ post, user, onLike, onClose }) {
               </div>
               <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: 18, cursor: 'pointer', color: '#888780' }}>✕</button>
             </div>
-            {isMobile && post.image_url && (
+            {isMobile && (post.image_url || post.video_url) && (
               <div style={{ background: '#000', flexShrink: 0 }}>
-                <img src={post.image_url} alt="post" style={{ width: '100%', maxHeight: 240, objectFit: 'contain', display: 'block' }} />
+                {post.video_url
+                  ? <video src={post.video_url} controls playsInline style={{ width: '100%', maxHeight: 240, display: 'block' }} />
+                  : <img src={post.image_url} alt="post" style={{ width: '100%', maxHeight: 240, objectFit: 'contain', display: 'block' }} />
+                }
               </div>
             )}
             {post.caption && (
@@ -334,7 +340,12 @@ export default function PostCard({ post, user, onLike, onDelete, onTagClick }) {
             </div>
           )}
         </div>
-        {post.image_url && <img src={post.image_url} alt="post" onClick={() => setShowComments(true)} style={{ width: '100%', maxHeight: 500, objectFit: 'contain', background: '#F4FAF0', cursor: 'pointer', display: 'block' }} />}
+        {post.video_url ? (
+          <video src={post.video_url} controls playsInline style={{ width: '100%', maxHeight: 500, background: '#000', display: 'block' }} />
+        ) : post.image_url ? (
+          <img src={post.image_url} alt="post" onClick={() => setShowComments(true)}
+            style={{ width: '100%', maxHeight: 500, objectFit: 'contain', background: '#F4FAF0', cursor: 'pointer', display: 'block' }} />
+        ) : null}
         <div style={{ padding: '12px 14px' }}>
           <Caption text={post.caption} onTagClick={onTagClick ?? (() => {})} />
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 10 }}>
