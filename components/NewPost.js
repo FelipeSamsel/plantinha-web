@@ -281,16 +281,64 @@ export default function NewPost({ user, onPost }) {
     finally { setLoading(false) }
   }
 
+  async function captureThumb(videoUrl) {
+    return new Promise(resolve => {
+      try {
+        const vid = document.createElement('video')
+        vid.src = videoUrl
+        vid.crossOrigin = 'anonymous'
+        vid.muted = true
+        vid.preload = 'metadata'
+        vid.onloadedmetadata = () => {
+          // captura frame no 1/3 da duração
+          vid.currentTime = Math.min(vid.duration * 0.33, vid.duration - 0.1)
+        }
+        vid.onseeked = () => {
+          try {
+            const canvas = document.createElement('canvas')
+            canvas.width = vid.videoWidth || 640
+            canvas.height = vid.videoHeight || 360
+            canvas.getContext('2d').drawImage(vid, 0, 0, canvas.width, canvas.height)
+            canvas.toBlob(blob => resolve(blob), 'image/jpeg', 0.85)
+          } catch { resolve(null) }
+        }
+        vid.onerror = () => resolve(null)
+      } catch { resolve(null) }
+    })
+  }
+
   async function publishVideo() {
     if (!user?.id) return alert('Sessão expirada. Recarregue a página e tente novamente.')
     if (!caption || !trimmedBlob) return alert('Adicione um vídeo e legenda.')
     setLoading(true)
     try {
+      const ts = Date.now()
       const ext = trimmedMime.includes('webm') ? 'webm' : 'mp4'
-      const filename = `videos/${Date.now()}.${ext}`
+      const filename = `videos/${ts}.${ext}`
+
+      // upload do vídeo
       await supabase.storage.from('post-images').upload(filename, trimmedBlob, { contentType: trimmedMime })
       const { data: urlData } = supabase.storage.from('post-images').getPublicUrl(filename)
-      const { data: post, error: postError } = await supabase.from('posts').insert({ user_id: user.id, caption, video_url: urlData.publicUrl }).select().single()
+      const videoUrl = urlData.publicUrl
+
+      // captura thumbnail do vídeo
+      let thumbUrl = null
+      const thumbBlob = await captureThumb(videoPreview)
+      if (thumbBlob) {
+        const thumbFilename = `thumbs/${ts}.jpg`
+        const { error: thumbErr } = await supabase.storage.from('post-images').upload(thumbFilename, thumbBlob, { contentType: 'image/jpeg' })
+        if (!thumbErr) {
+          const { data: thumbData } = supabase.storage.from('post-images').getPublicUrl(thumbFilename)
+          thumbUrl = thumbData.publicUrl
+        }
+      }
+
+      const { data: post, error: postError } = await supabase.from('posts').insert({
+        user_id: user.id,
+        caption,
+        video_url: videoUrl,
+        image_url: thumbUrl, // thumb usada no grid do perfil
+      }).select().single()
       if (postError) throw postError
       await saveTags(post.id)
       reset(); onPost()
