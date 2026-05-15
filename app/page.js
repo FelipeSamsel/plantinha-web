@@ -4,97 +4,50 @@ import { supabase } from '../lib/supabase'
 import PostCard from '../components/PostCard'
 import { useT } from '../lib/i18n'
 
-// ── Sugestões mobile — bolinhas horizontais ──────────────────────────
-function SuggestStrip({ user }) {
-  const [suggestions, setSuggestions] = useState([])
+// Busca sugestões — lógica compartilhada, retorna sempre 5 embaralhados
+async function fetchSuggestions(userId) {
+  const { data: myFollows } = await supabase
+    .from('follows').select('following_id').eq('follower_id', userId)
+  const myFollowingIds = new Set((myFollows ?? []).map(f => f.following_id))
 
-  useEffect(() => { if (user) load() }, [user])
+  let candidates = []
 
-  async function load() {
-    const { data: myFollows } = await supabase
-      .from('follows').select('following_id').eq('follower_id', user.id)
-    const myFollowingIds = new Set((myFollows ?? []).map(f => f.following_id))
+  if (myFollowingIds.size > 0) {
+    const { data: friendsFollows } = await supabase
+      .from('follows').select('following_id').in('follower_id', [...myFollowingIds])
 
-    let candidates = []
-
-    if (myFollowingIds.size > 0) {
-      const { data: friendsFollows } = await supabase
-        .from('follows').select('following_id').in('follower_id', [...myFollowingIds])
-      const freq = {}
-      ;(friendsFollows ?? []).forEach(({ following_id }) => {
-        if (following_id !== user.id && !myFollowingIds.has(following_id))
-          freq[following_id] = (freq[following_id] ?? 0) + 1
-      })
-      const topIds = Object.entries(freq).sort((a, b) => b[1] - a[1]).slice(0, 10).map(([id]) => id)
-      if (topIds.length > 0) {
-        const { data: profiles } = await supabase.from('profiles').select('id, username, avatar_url').in('id', topIds)
-        candidates = (profiles ?? []).sort((a, b) => (freq[b.id] ?? 0) - (freq[a.id] ?? 0))
+    const freq = {}
+    ;(friendsFollows ?? []).forEach(({ following_id }) => {
+      if (following_id !== userId && !myFollowingIds.has(following_id)) {
+        freq[following_id] = (freq[following_id] ?? 0) + 1
       }
-    }
+    })
 
-    if (candidates.length < 6) {
-      const excludeIds = [...myFollowingIds, user.id, ...candidates.map(c => c.id)]
-      const { data: random } = await supabase
-        .from('profiles').select('id, username, avatar_url')
-        .not('id', 'in', `(${excludeIds.join(',')})`)
-        .limit(10)
-      candidates = [...candidates, ...(random ?? [])].slice(0, 10)
-    }
+    const topIds = Object.entries(freq).sort((a, b) => b[1] - a[1]).slice(0, 20).map(([id]) => id)
 
-    setSuggestions(candidates)
+    if (topIds.length > 0) {
+      const { data: profiles } = await supabase
+        .from('profiles').select('id, username, avatar_url').in('id', topIds)
+      candidates = (profiles ?? []).sort((a, b) => (freq[b.id] ?? 0) - (freq[a.id] ?? 0))
+    }
   }
 
-  if (suggestions.length === 0) return null
+  // completa com aleatórios se precisar
+  if (candidates.length < 10) {
+    const excludeIds = [...myFollowingIds, userId, ...candidates.map(c => c.id)]
+    const { data: random } = await supabase
+      .from('profiles').select('id, username, avatar_url')
+      .not('id', 'in', `(${excludeIds.join(',')})`)
+      .limit(20)
+    candidates = [...candidates, ...(random ?? []).filter(p => !candidates.find(c => c.id === p.id))]
+  }
 
-  return (
-    <div style={{
-      overflowX: 'auto', display: 'flex', gap: 16,
-      padding: '12px 4px 14px',
-      marginBottom: 8,
-      scrollbarWidth: 'none',
-      WebkitOverflowScrolling: 'touch',
-    }}
-      className="suggest-strip">
-      {suggestions.map(profile => {
-        const initial = (profile.username?.[0] ?? '?').toUpperCase()
-        return (
-          <a key={profile.id} href={`/perfil/${profile.id}`} style={{
-            display: 'flex', flexDirection: 'column', alignItems: 'center',
-            gap: 6, textDecoration: 'none', flexShrink: 0, width: 64
-          }}>
-            <div style={{
-              width: 56, height: 56, borderRadius: '50%',
-              border: '2px solid #3B6D11',
-              padding: 2, boxSizing: 'border-box',
-              background: '#fff'
-            }}>
-              <div style={{
-                width: '100%', height: '100%', borderRadius: '50%',
-                overflow: 'hidden', background: '#EAF3DE',
-                display: 'flex', alignItems: 'center', justifyContent: 'center'
-              }}>
-                {profile.avatar_url
-                  ? <img src={profile.avatar_url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                  : <span style={{ fontSize: 18, fontWeight: 600, color: '#3B6D11' }}>{initial}</span>
-                }
-              </div>
-            </div>
-            <span style={{
-              fontSize: 11, color: '#1a1a1a', fontWeight: 500,
-              textAlign: 'center', width: '100%',
-              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap'
-            }}>
-              {profile.username}
-            </span>
-          </a>
-        )
-      })}
-      <style>{`.suggest-strip::-webkit-scrollbar { display: none; }`}</style>
-    </div>
-  )
+  // embaralha e pega 5
+  const shuffled = candidates.sort(() => Math.random() - 0.5)
+  return { suggestions: shuffled.slice(0, 5), following: myFollowingIds }
 }
 
-// ── Painel lateral desktop ───────────────────────────────────────────
+// ── Painel lateral desktop ──────────────────────────────────────────
 function SuggestPanel({ user }) {
   const [suggestions, setSuggestions] = useState([])
   const [following, setFollowing] = useState(new Set())
@@ -104,38 +57,9 @@ function SuggestPanel({ user }) {
 
   async function load() {
     setLoading(true)
-    const { data: myFollows } = await supabase
-      .from('follows').select('following_id').eq('follower_id', user.id)
-    const myFollowingIds = new Set((myFollows ?? []).map(f => f.following_id))
-    setFollowing(myFollowingIds)
-
-    let candidates = []
-
-    if (myFollowingIds.size > 0) {
-      const { data: friendsFollows } = await supabase
-        .from('follows').select('following_id').in('follower_id', [...myFollowingIds])
-      const freq = {}
-      ;(friendsFollows ?? []).forEach(({ following_id }) => {
-        if (following_id !== user.id && !myFollowingIds.has(following_id))
-          freq[following_id] = (freq[following_id] ?? 0) + 1
-      })
-      const topIds = Object.entries(freq).sort((a, b) => b[1] - a[1]).slice(0, 10).map(([id]) => id)
-      if (topIds.length > 0) {
-        const { data: profiles } = await supabase.from('profiles').select('id, username, avatar_url').in('id', topIds)
-        candidates = (profiles ?? []).sort((a, b) => (freq[b.id] ?? 0) - (freq[a.id] ?? 0))
-      }
-    }
-
-    if (candidates.length < 5) {
-      const excludeIds = [...myFollowingIds, user.id, ...candidates.map(c => c.id)]
-      const { data: random } = await supabase
-        .from('profiles').select('id, username, avatar_url')
-        .not('id', 'in', `(${excludeIds.join(',')})`)
-        .limit(8)
-      candidates = [...candidates, ...(random ?? [])].slice(0, 8)
-    }
-
-    setSuggestions(candidates)
+    const { suggestions, following } = await fetchSuggestions(user.id)
+    setSuggestions(suggestions)
+    setFollowing(following)
     setLoading(false)
   }
 
@@ -154,12 +78,19 @@ function SuggestPanel({ user }) {
     }
   }
 
-  if (loading || suggestions.length === 0) return null
+  if (loading) return (
+    <div style={{ background: '#fff', borderRadius: 16, border: '0.5px solid #E2F2D4', padding: 16 }}>
+      <p style={{ fontSize: 13, color: '#B4B2A9', textAlign: 'center' }}>Carregando...</p>
+    </div>
+  )
+
+  if (suggestions.length === 0) return null
 
   return (
     <div style={{ background: '#fff', borderRadius: 16, border: '0.5px solid #E2F2D4', overflow: 'hidden', position: 'sticky', top: 24 }}>
-      <div style={{ padding: '14px 16px 10px', borderBottom: '0.5px solid #F0F7EC' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 16px 10px', borderBottom: '0.5px solid #F0F7EC' }}>
         <p style={{ fontSize: 13, fontWeight: 600, color: '#27500A', margin: 0 }}>🌱 Quem seguir</p>
+        <button onClick={load} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 14, color: '#B4B2A9' }} title="Atualizar sugestões">↻</button>
       </div>
       <div style={{ padding: '6px 0' }}>
         {suggestions.map(profile => {
@@ -189,6 +120,54 @@ function SuggestPanel({ user }) {
                 {isFollowing ? 'Seguindo' : 'Seguir'}
               </button>
             </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+// ── Bolinhas mobile ─────────────────────────────────────────────────
+function SuggestStories({ user }) {
+  const [suggestions, setSuggestions] = useState([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => { if (user) load() }, [user])
+
+  async function load() {
+    setLoading(true)
+    const { suggestions } = await fetchSuggestions(user.id)
+    setSuggestions(suggestions)
+    setLoading(false)
+  }
+
+  if (loading || suggestions.length === 0) return null
+
+  return (
+    <div style={{ marginBottom: 16 }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10, paddingRight: 4 }}>
+        <p style={{ fontSize: 12, fontWeight: 600, color: '#27500A', margin: 0 }}>🌱 Quem seguir</p>
+        <button onClick={load} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 13, color: '#B4B2A9' }}>↻</button>
+      </div>
+      <div style={{ display: 'flex', gap: 16, overflowX: 'auto', paddingBottom: 4, scrollbarWidth: 'none' }}>
+        {suggestions.map(profile => {
+          const initial = (profile.username?.[0] ?? '?').toUpperCase()
+          return (
+            <a key={profile.id} href={`/perfil/${profile.id}`} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, textDecoration: 'none', flexShrink: 0 }}>
+              <div style={{
+                width: 56, height: 56, borderRadius: '50%', overflow: 'hidden',
+                background: '#EAF3DE', border: '2px solid #C5E4A7',
+                display: 'flex', alignItems: 'center', justifyContent: 'center'
+              }}>
+                {profile.avatar_url
+                  ? <img src={profile.avatar_url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                  : <span style={{ fontSize: 20, fontWeight: 600, color: '#3B6D11' }}>{initial}</span>
+                }
+              </div>
+              <span style={{ fontSize: 11, color: '#27500A', fontWeight: 500, maxWidth: 60, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textAlign: 'center' }}>
+                {profile.username}
+              </span>
+            </a>
           )
         })}
       </div>
@@ -265,15 +244,14 @@ export default function FeedPage() {
         <div style={{ flex: 1, minWidth: 0 }}>
 
           {/* Bolinhas mobile — some no desktop */}
-          <div className="suggest-strip-wrapper">
-            <SuggestStrip user={user} />
-            <div style={{ height: 0.5, background: '#E2F2D4', marginBottom: 16 }} />
+          <div className="stories-mobile">
+            <SuggestStories user={user} />
           </div>
 
           {activeTag && (
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: '#EAF3DE', borderRadius: 12, padding: '10px 14px', marginBottom: 16, border: '0.5px solid #C5E4A7' }}>
               <span style={{ fontSize: 14, color: '#27500A', fontWeight: 500 }}>#{activeTag}</span>
-              <button onClick={() => setActiveTag(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#888780', fontSize: 13 }}>
+              <button onClick={() => setActiveTag(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#888780', fontSize: 13, display: 'flex', alignItems: 'center', gap: 4 }}>
                 {t.clearFilter}
               </button>
             </div>
@@ -292,28 +270,26 @@ export default function FeedPage() {
           </div>
         </div>
 
-        {/* Coluna direita — desktop */}
+        {/* Coluna direita — some no mobile */}
         <div className="suggest-col" style={{ width: 260, flexShrink: 0 }}>
           <SuggestPanel user={user} />
         </div>
       </div>
 
       <style>{`
-        /* desktop: mostra painel, esconde strip */
-        .suggest-strip-wrapper { display: none; }
         .suggest-col { display: block; }
-
-        /* mobile: esconde painel, mostra strip */
+        .stories-mobile { display: none; }
         @media (max-width: 900px) {
-          .suggest-strip-wrapper { display: block; }
           .suggest-col { display: none !important; }
+          .stories-mobile { display: block !important; }
         }
+        .stories-mobile div::-webkit-scrollbar { display: none; }
       `}</style>
     </>
   )
 }
 
-// ── Login ────────────────────────────────────────────────────────────
+// ── Tela de login ────────────────────────────────────────────────────
 function LoginScreen() {
   const t = useT()
   const [mode, setMode] = useState('home')
@@ -377,7 +353,6 @@ function LoginScreen() {
         <div style={{ position: 'absolute', bottom: -40, left: -40, width: 160, height: 160, borderRadius: '50%', background: 'rgba(59,109,17,0.1)' }} />
         <div style={{ position: 'absolute', top: '40%', left: -30, width: 100, height: 100, borderRadius: '50%', background: 'rgba(192,221,151,0.4)' }} />
       </div>
-
       {mode === 'home' && (
         <div style={cardStyle}>
           <div style={{ marginBottom: 20 }}>{plantIcon}</div>
@@ -393,7 +368,6 @@ function LoginScreen() {
           <button onClick={() => setMode('register')} style={{ ...btnWhite, marginBottom: 0 }}>{t.createAccount}</button>
         </div>
       )}
-
       {mode === 'login' && (
         <div style={cardStyle}>
           <button onClick={() => setMode('home')} style={{ alignSelf: 'flex-start', background: 'none', border: 'none', color: '#888780', cursor: 'pointer', fontSize: 13, marginBottom: 16, padding: 0, fontFamily: 'inherit' }}>{t.back}</button>
@@ -404,7 +378,6 @@ function LoginScreen() {
           <button onClick={() => setMode('register')} style={{ background: 'none', border: 'none', color: '#3B6D11', fontSize: 13, cursor: 'pointer', fontFamily: 'inherit' }}>{t.noAccount}</button>
         </div>
       )}
-
       {mode === 'register' && !sent && (
         <div style={cardStyle}>
           <button onClick={() => setMode('home')} style={{ alignSelf: 'flex-start', background: 'none', border: 'none', color: '#888780', cursor: 'pointer', fontSize: 13, marginBottom: 16, padding: 0, fontFamily: 'inherit' }}>{t.back}</button>
@@ -416,7 +389,6 @@ function LoginScreen() {
           <button onClick={() => setMode('login')} style={{ background: 'none', border: 'none', color: '#3B6D11', fontSize: 13, cursor: 'pointer', fontFamily: 'inherit' }}>{t.hasAccount}</button>
         </div>
       )}
-
       {mode === 'register' && sent && (
         <div style={cardStyle}>
           <div style={{ fontSize: 48, marginBottom: 16 }}>📬</div>
