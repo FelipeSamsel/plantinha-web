@@ -5,7 +5,7 @@ import ReactCrop from 'react-image-crop'
 import 'react-image-crop/dist/ReactCrop.css'
 
 const TAGS = ['Suculenta', 'Cacto', 'Monstera', 'Orquídea', 'Samambaia', 'Palmeira']
-const MAX_CLIP = 60 // segundos
+const MAX_CLIP = 60
 
 async function getCroppedBlob(imgEl, crop) {
   const canvas = document.createElement('canvas')
@@ -24,20 +24,17 @@ function fmtTime(s) {
   return `${m}:${sec.toString().padStart(2, '0')}`
 }
 
-// ── Editor de corte de vídeo ─────────────────────────────────────────
+// Fora do NewPost — componente estável, não recriado a cada render
 function VideoTrimmer({ file, duration, onConfirm, onCancel }) {
   const [start, setStart] = useState(0)
   const [end, setEnd] = useState(Math.min(duration, MAX_CLIP))
-  const [dragging, setDragging] = useState(null) // 'start' | 'end'
+  const [dragging, setDragging] = useState(null)
   const [currentTime, setCurrentTime] = useState(0)
   const [trimming, setTrimming] = useState(false)
   const videoRef = useRef(null)
   const trackRef = useRef(null)
   const previewUrl = useRef(URL.createObjectURL(file)).current
 
-  const clipLen = end - start
-
-  // sincroniza preview com start ao mudar
   useEffect(() => {
     if (videoRef.current) videoRef.current.currentTime = start
   }, [start])
@@ -60,15 +57,12 @@ function VideoTrimmer({ file, duration, onConfirm, onCancel }) {
       const t = posToTime(clientX)
       if (dragging === 'start') {
         const newStart = Math.max(0, Math.min(t, end - 1))
-        // garante que o clip não ultrapasse MAX_CLIP
         const newEnd = Math.min(duration, newStart + MAX_CLIP)
-        setStart(newStart)
-        setEnd(newEnd)
+        setStart(newStart); setEnd(newEnd)
       } else {
         const newEnd = Math.min(duration, Math.max(t, start + 1))
         const newStart = Math.max(0, newEnd - MAX_CLIP)
-        setEnd(newEnd)
-        setStart(Math.max(start, newStart))
+        setEnd(newEnd); setStart(Math.max(start, newStart))
       }
     }
     function onUp() { setDragging(null) }
@@ -84,12 +78,10 @@ function VideoTrimmer({ file, duration, onConfirm, onCancel }) {
     }
   }, [dragging, start, end, duration])
 
-  // atualiza currentTime no video enquanto roda
   function onTimeUpdate() {
     if (!videoRef.current) return
     const ct = videoRef.current.currentTime
     setCurrentTime(ct)
-    // para no fim do trecho
     if (ct >= end) {
       videoRef.current.pause()
       videoRef.current.currentTime = start
@@ -99,74 +91,48 @@ function VideoTrimmer({ file, duration, onConfirm, onCancel }) {
   async function doTrim() {
     setTrimming(true)
     try {
-      // Usa a Web API nativa (MediaRecorder + seeked frames) para cortar
-      // sem depender de ffmpeg — funciona em todos os browsers modernos
       const video = document.createElement('video')
       video.src = previewUrl
       video.muted = true
       await new Promise(r => { video.onloadedmetadata = r })
-
       const canvas = document.createElement('canvas')
       canvas.width = video.videoWidth
       canvas.height = video.videoHeight
       const ctx = canvas.getContext('2d')
-
       const stream = canvas.captureStream(30)
-
-      // tenta pegar áudio do arquivo original
       let audioStream = null
       try {
-        // AudioContext para capturar o áudio
         const audioCtx = new AudioContext()
         const arrayBuffer = await file.arrayBuffer()
         const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer)
-
-        // cria source e destination
         const dest = audioCtx.createMediaStreamDestination()
         const source = audioCtx.createBufferSource()
         source.buffer = audioBuffer
         source.connect(dest)
         source.start(0, start, end - start)
         audioStream = dest.stream
-      } catch (e) {
-        // áudio não disponível — vídeo mudo
-      }
-
+      } catch (e) {}
       const tracks = [...stream.getTracks(), ...(audioStream ? audioStream.getTracks() : [])]
       const combined = new MediaStream(tracks)
-
-      const chunks = []
       const mimeType = MediaRecorder.isTypeSupported('video/webm;codecs=vp9,opus')
         ? 'video/webm;codecs=vp9,opus'
-        : MediaRecorder.isTypeSupported('video/webm')
-          ? 'video/webm'
-          : 'video/mp4'
-
+        : MediaRecorder.isTypeSupported('video/webm') ? 'video/webm' : 'video/mp4'
+      const chunks = []
       const recorder = new MediaRecorder(combined, { mimeType })
       recorder.ondataavailable = e => { if (e.data.size > 0) chunks.push(e.data) }
-
       const done = new Promise(resolve => { recorder.onstop = resolve })
       recorder.start(100)
-
-      // desenha frames no canvas enquanto o vídeo roda
       video.currentTime = start
       await new Promise(r => { video.onseeked = r })
       video.play()
-
       const drawFrame = () => {
-        if (video.currentTime >= end) {
-          video.pause()
-          recorder.stop()
-          return
-        }
+        if (video.currentTime >= end) { video.pause(); recorder.stop(); return }
         ctx.drawImage(video, 0, 0, canvas.width, canvas.height)
         requestAnimationFrame(drawFrame)
       }
       drawFrame()
       await done
-
-      const blob = new Blob(chunks, { type: mimeType })
-      onConfirm(blob, mimeType)
+      onConfirm(new Blob(chunks, { type: mimeType }), mimeType)
     } catch (e) {
       alert('Erro ao cortar vídeo: ' + e.message)
       setTrimming(false)
@@ -176,89 +142,39 @@ function VideoTrimmer({ file, duration, onConfirm, onCancel }) {
   const startPct = (start / duration) * 100
   const endPct = (end / duration) * 100
   const timePct = (currentTime / duration) * 100
+  const clipLen = end - start
 
   return (
     <div>
-      <p style={{ fontSize: 13, color: '#27500A', fontWeight: 500, marginBottom: 12, textAlign: 'center' }}>
-        ✂️ Escolha o trecho (máx. 1 min)
-      </p>
-
-      {/* Preview do vídeo */}
-      <video
-        ref={videoRef}
-        src={previewUrl}
-        onTimeUpdate={onTimeUpdate}
-        onClick={() => {
-          if (videoRef.current.paused) {
-            videoRef.current.currentTime = start
-            videoRef.current.play()
-          } else {
-            videoRef.current.pause()
-          }
-        }}
+      <p style={{ fontSize: 13, color: '#27500A', fontWeight: 500, marginBottom: 12, textAlign: 'center' }}>✂️ Escolha o trecho (máx. 1 min)</p>
+      <video ref={videoRef} src={previewUrl} onTimeUpdate={onTimeUpdate}
+        onClick={() => { if (videoRef.current.paused) { videoRef.current.currentTime = start; videoRef.current.play() } else videoRef.current.pause() }}
         style={{ width: '100%', maxHeight: 240, borderRadius: 10, background: '#000', display: 'block', cursor: 'pointer', marginBottom: 16 }}
-        playsInline
-      />
-
-      {/* Linha do tempo */}
+        playsInline />
       <div style={{ padding: '0 12px', marginBottom: 8 }}>
-        <div
-          ref={trackRef}
-          style={{ position: 'relative', height: 36, background: '#F0F7EC', borderRadius: 8, userSelect: 'none', cursor: 'default' }}>
-
-          {/* faixa fora do selecionado (escurecida) */}
+        <div ref={trackRef} style={{ position: 'relative', height: 36, background: '#F0F7EC', borderRadius: 8, userSelect: 'none' }}>
           <div style={{ position: 'absolute', left: 0, width: `${startPct}%`, height: '100%', background: 'rgba(0,0,0,0.25)', borderRadius: '8px 0 0 8px' }} />
           <div style={{ position: 'absolute', left: `${endPct}%`, right: 0, height: '100%', background: 'rgba(0,0,0,0.25)', borderRadius: '0 8px 8px 0' }} />
-
-          {/* faixa selecionada */}
           <div style={{ position: 'absolute', left: `${startPct}%`, width: `${endPct - startPct}%`, height: '100%', background: '#3B6D11', opacity: 0.35 }} />
-
-          {/* indicador de posição atual */}
           <div style={{ position: 'absolute', left: `${timePct}%`, top: 0, bottom: 0, width: 2, background: '#fff', transform: 'translateX(-50%)', pointerEvents: 'none' }} />
-
-          {/* handle início */}
-          <div
-            onMouseDown={e => onTrackMouseDown(e, 'start')}
-            onTouchStart={e => onTrackMouseDown(e, 'start')}
-            style={{
-              position: 'absolute', left: `${startPct}%`, top: 0, bottom: 0,
-              width: 18, transform: 'translateX(-50%)',
-              background: '#3B6D11', borderRadius: 4, cursor: 'ew-resize',
-              display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 2
-            }}>
-            <div style={{ width: 2, height: 14, background: '#EAF3DE', borderRadius: 2 }} />
-          </div>
-
-          {/* handle fim */}
-          <div
-            onMouseDown={e => onTrackMouseDown(e, 'end')}
-            onTouchStart={e => onTrackMouseDown(e, 'end')}
-            style={{
-              position: 'absolute', left: `${endPct}%`, top: 0, bottom: 0,
-              width: 18, transform: 'translateX(-50%)',
-              background: '#3B6D11', borderRadius: 4, cursor: 'ew-resize',
-              display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 2
-            }}>
-            <div style={{ width: 2, height: 14, background: '#EAF3DE', borderRadius: 2 }} />
-          </div>
+          {['start', 'end'].map(handle => (
+            <div key={handle}
+              onMouseDown={e => onTrackMouseDown(e, handle)}
+              onTouchStart={e => onTrackMouseDown(e, handle)}
+              style={{ position: 'absolute', left: `${handle === 'start' ? startPct : endPct}%`, top: 0, bottom: 0, width: 18, transform: 'translateX(-50%)', background: '#3B6D11', borderRadius: 4, cursor: 'ew-resize', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 2 }}>
+              <div style={{ width: 2, height: 14, background: '#EAF3DE', borderRadius: 2 }} />
+            </div>
+          ))}
         </div>
-
-        {/* tempos */}
         <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 6 }}>
           <span style={{ fontSize: 11, color: '#3B6D11', fontWeight: 600 }}>{fmtTime(start)}</span>
           <span style={{ fontSize: 11, color: '#888780' }}>{fmtTime(clipLen)} selecionado</span>
           <span style={{ fontSize: 11, color: '#3B6D11', fontWeight: 600 }}>{fmtTime(end)}</span>
         </div>
       </div>
-
-      <p style={{ fontSize: 11, color: '#B4B2A9', textAlign: 'center', marginBottom: 14 }}>
-        Clique no vídeo para pré-visualizar o trecho
-      </p>
-
+      <p style={{ fontSize: 11, color: '#B4B2A9', textAlign: 'center', marginBottom: 14 }}>Clique no vídeo para pré-visualizar o trecho</p>
       <div style={{ display: 'flex', gap: 8 }}>
-        <button onClick={onCancel} style={{ flex: 1, background: '#fff', border: '0.5px solid #C5E4A7', borderRadius: 10, padding: '11px 0', fontSize: 13, cursor: 'pointer', color: '#888780', fontFamily: 'inherit' }}>
-          Cancelar
-        </button>
+        <button onClick={onCancel} style={{ flex: 1, background: '#fff', border: '0.5px solid #C5E4A7', borderRadius: 10, padding: '11px 0', fontSize: 13, cursor: 'pointer', color: '#888780', fontFamily: 'inherit' }}>Cancelar</button>
         <button onClick={doTrim} disabled={trimming} style={{ flex: 2, background: '#3B6D11', border: 'none', borderRadius: 10, padding: '11px 0', fontSize: 13, fontWeight: 500, cursor: trimming ? 'default' : 'pointer', color: '#EAF3DE', fontFamily: 'inherit' }}>
           {trimming ? 'Processando...' : `Usar este trecho (${fmtTime(clipLen)}) ✓`}
         </button>
@@ -267,14 +183,12 @@ function VideoTrimmer({ file, duration, onConfirm, onCancel }) {
   )
 }
 
-// ── NewPost principal ────────────────────────────────────────────────
 export default function NewPost({ user, onPost }) {
   const [caption, setCaption] = useState('')
   const [tags, setTags] = useState([])
   const [loading, setLoading] = useState(false)
   const [step, setStep] = useState('select')
 
-  // imagem
   const [rawImage, setRawImage] = useState(null)
   const [croppedBlob, setCroppedBlob] = useState(null)
   const [croppedPreview, setCroppedPreview] = useState(null)
@@ -282,7 +196,6 @@ export default function NewPost({ user, onPost }) {
   const [aspect, setAspect] = useState(undefined)
   const imgRef = useRef(null)
 
-  // vídeo
   const [videoFile, setVideoFile] = useState(null)
   const [videoDuration, setVideoDuration] = useState(0)
   const [trimmedBlob, setTrimmedBlob] = useState(null)
@@ -309,7 +222,6 @@ export default function NewPost({ user, onPost }) {
       setVideoFile(f)
       setVideoDuration(vid.duration)
       if (vid.duration <= MAX_CLIP) {
-        // já cabe em 1 min — pula o editor
         setTrimmedBlob(f)
         setTrimmedMime(f.type || 'video/mp4')
         setVideoPreview(url)
@@ -347,9 +259,9 @@ export default function NewPost({ user, onPost }) {
   }
 
   async function saveTags(postId) {
-    const extractedTags = [...new Set((caption.match(/#[\wÀ-ú]+/g) ?? []).map(t => t.slice(1).toLowerCase()))]
-    const allTags = [...new Set([...extractedTags, ...tags.map(t => t.toLowerCase())])]
-    if (allTags.length > 0) await supabase.from('post_tags').insert(allTags.map(tag => ({ post_id: postId, tag })))
+    const extracted = [...new Set((caption.match(/#[\wÀ-ú]+/g) ?? []).map(t => t.slice(1).toLowerCase()))]
+    const all = [...new Set([...extracted, ...tags.map(t => t.toLowerCase())])]
+    if (all.length > 0) await supabase.from('post_tags').insert(all.map(tag => ({ post_id: postId, tag })))
   }
 
   async function publishImage() {
@@ -370,7 +282,7 @@ export default function NewPost({ user, onPost }) {
     if (!caption || !trimmedBlob) return alert('Adicione um vídeo e legenda.')
     setLoading(true)
     try {
-      const ext = trimmedMime.includes('webm') ? 'webm' : trimmedMime.includes('mp4') ? 'mp4' : 'webm'
+      const ext = trimmedMime.includes('webm') ? 'webm' : 'mp4'
       const filename = `videos/${Date.now()}.${ext}`
       await supabase.storage.from('post-images').upload(filename, trimmedBlob, { contentType: trimmedMime })
       const { data: urlData } = supabase.storage.from('post-images').getPublicUrl(filename)
@@ -392,39 +304,19 @@ export default function NewPost({ user, onPost }) {
   const btnCancel = { flex: 1, background: '#fff', border: '0.5px solid #C5E4A7', borderRadius: 10, padding: '11px 0', fontSize: 13, cursor: 'pointer', color: '#888780', fontFamily: 'inherit' }
   const btnGreen = { flex: 2, background: '#3B6D11', border: 'none', borderRadius: 10, padding: '11px 0', fontSize: 13, fontWeight: 500, cursor: 'pointer', color: '#EAF3DE', fontFamily: 'inherit' }
 
-  function DetailsForm({ onPublish, preview, isVideo }) {
-    return (
-      <div>
-        <div style={{ position: 'relative', marginBottom: 12 }}>
-          {isVideo ? (
-            <video src={preview} controls playsInline style={{ width: '100%', maxHeight: 280, borderRadius: 12, background: '#000', display: 'block' }} />
-          ) : (
-            <>
-              <img src={preview} alt="preview" style={{ width: '100%', maxHeight: 280, objectFit: 'contain', borderRadius: 12, background: '#F4FAF0', display: 'block' }} />
-              <button onClick={() => setStep('crop')} style={{ position: 'absolute', top: 8, right: 8, background: 'rgba(0,0,0,0.45)', backdropFilter: 'blur(6px)', border: 'none', color: '#fff', borderRadius: 20, padding: '5px 12px', fontSize: 11, cursor: 'pointer' }}>✏️ editar corte</button>
-            </>
-          )}
-          {isVideo && (
-            <button onClick={() => setStep('video-trim')} style={{ position: 'absolute', top: 8, right: 8, background: 'rgba(0,0,0,0.45)', backdropFilter: 'blur(6px)', border: 'none', color: '#fff', borderRadius: 20, padding: '5px 12px', fontSize: 11, cursor: 'pointer' }}>✂️ editar corte</button>
-          )}
-        </div>
-        <textarea value={caption} onChange={e => setCaption(e.target.value)} placeholder="Escreva a legenda... use #hashtags para categorizar 🌿" rows={3}
-          style={{ width: '100%', border: '0.5px solid #C5E4A7', borderRadius: 10, padding: 10, fontSize: 13, fontFamily: 'inherit', resize: 'none', marginBottom: 8, outline: 'none', background: '#fff', boxSizing: 'border-box' }} />
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 14 }}>
-          {TAGS.map(t => (
-            <button key={t} onClick={() => toggleTag(t)} style={{ padding: '4px 12px', borderRadius: 20, fontSize: 12, cursor: 'pointer', border: '0.5px solid #C5E4A7', background: tags.includes(t) ? '#EAF3DE' : '#fff', color: tags.includes(t) ? '#3B6D11' : '#888780', fontWeight: tags.includes(t) ? 500 : 400, fontFamily: 'inherit' }}>{t}</button>
-          ))}
-        </div>
-        <div style={{ display: 'flex', gap: 8 }}>
-          <button onClick={reset} style={btnCancel}>Cancelar</button>
-          <button onClick={onPublish} disabled={loading} style={btnGreen}>{loading ? 'Publicando...' : 'Publicar 🌱'}</button>
-        </div>
-      </div>
-    )
-  }
+  // tags compartilhado entre foto e vídeo
+  const tagsSection = (
+    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 14 }}>
+      {TAGS.map(t => (
+        <button key={t} onClick={() => toggleTag(t)} style={{ padding: '4px 12px', borderRadius: 20, fontSize: 12, cursor: 'pointer', border: '0.5px solid #C5E4A7', background: tags.includes(t) ? '#EAF3DE' : '#fff', color: tags.includes(t) ? '#3B6D11' : '#888780', fontWeight: tags.includes(t) ? 500 : 400, fontFamily: 'inherit' }}>{t}</button>
+      ))}
+    </div>
+  )
 
   return (
     <div>
+
+      {/* Seleção */}
       {step === 'select' && (
         <div style={{ display: 'flex', gap: 10 }}>
           <label style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, border: '1px dashed #C5E4A7', borderRadius: 12, padding: '28px 16px', textAlign: 'center', cursor: 'pointer', background: '#fff' }}>
@@ -441,6 +333,7 @@ export default function NewPost({ user, onPost }) {
         </div>
       )}
 
+      {/* Crop imagem */}
       {step === 'crop' && (
         <div>
           <p style={{ fontSize: 12, color: '#888780', marginBottom: 10, textAlign: 'center' }}>Arraste os cantos para cortar livremente</p>
@@ -461,17 +354,55 @@ export default function NewPost({ user, onPost }) {
         </div>
       )}
 
+      {/* Editor de corte de vídeo */}
       {step === 'video-trim' && videoFile && (
-        <VideoTrimmer
-          file={videoFile}
-          duration={videoDuration}
-          onConfirm={onTrimConfirm}
-          onCancel={reset}
-        />
+        <VideoTrimmer file={videoFile} duration={videoDuration} onConfirm={onTrimConfirm} onCancel={reset} />
       )}
 
-      {step === 'details' && <DetailsForm onPublish={publishImage} preview={croppedPreview} isVideo={false} />}
-      {step === 'video-details' && <DetailsForm onPublish={publishVideo} preview={videoPreview} isVideo={true} />}
+      {/* Detalhes da foto — inline, sem componente aninhado */}
+      {step === 'details' && (
+        <div>
+          <div style={{ position: 'relative', marginBottom: 12 }}>
+            <img src={croppedPreview} alt="preview" style={{ width: '100%', maxHeight: 280, objectFit: 'contain', borderRadius: 12, background: '#F4FAF0', display: 'block' }} />
+            <button onClick={() => setStep('crop')} style={{ position: 'absolute', top: 8, right: 8, background: 'rgba(0,0,0,0.45)', backdropFilter: 'blur(6px)', border: 'none', color: '#fff', borderRadius: 20, padding: '5px 12px', fontSize: 11, cursor: 'pointer' }}>✏️ editar corte</button>
+          </div>
+          <textarea
+            value={caption}
+            onChange={e => setCaption(e.target.value)}
+            placeholder="Escreva a legenda... use #hashtags para categorizar 🌿"
+            rows={3}
+            style={{ width: '100%', border: '0.5px solid #C5E4A7', borderRadius: 10, padding: 10, fontSize: 13, fontFamily: 'inherit', resize: 'none', marginBottom: 8, outline: 'none', background: '#fff', boxSizing: 'border-box' }}
+          />
+          {tagsSection}
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button onClick={reset} style={btnCancel}>Cancelar</button>
+            <button onClick={publishImage} disabled={loading} style={btnGreen}>{loading ? 'Publicando...' : 'Publicar 🌱'}</button>
+          </div>
+        </div>
+      )}
+
+      {/* Detalhes do vídeo — inline, sem componente aninhado */}
+      {step === 'video-details' && (
+        <div>
+          <div style={{ position: 'relative', marginBottom: 12 }}>
+            <video src={videoPreview} controls playsInline style={{ width: '100%', maxHeight: 280, borderRadius: 12, background: '#000', display: 'block' }} />
+            <button onClick={() => setStep('video-trim')} style={{ position: 'absolute', top: 8, right: 8, background: 'rgba(0,0,0,0.45)', backdropFilter: 'blur(6px)', border: 'none', color: '#fff', borderRadius: 20, padding: '5px 12px', fontSize: 11, cursor: 'pointer' }}>✂️ editar corte</button>
+          </div>
+          <textarea
+            value={caption}
+            onChange={e => setCaption(e.target.value)}
+            placeholder="Escreva a legenda... use #hashtags para categorizar 🌿"
+            rows={3}
+            style={{ width: '100%', border: '0.5px solid #C5E4A7', borderRadius: 10, padding: 10, fontSize: 13, fontFamily: 'inherit', resize: 'none', marginBottom: 8, outline: 'none', background: '#fff', boxSizing: 'border-box' }}
+          />
+          {tagsSection}
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button onClick={reset} style={btnCancel}>Cancelar</button>
+            <button onClick={publishVideo} disabled={loading} style={btnGreen}>{loading ? 'Publicando...' : 'Publicar 🌱'}</button>
+          </div>
+        </div>
+      )}
+
     </div>
   )
 }
