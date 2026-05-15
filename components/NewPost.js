@@ -259,19 +259,22 @@ export default function NewPost({ user, onPost }) {
   }
 
   async function saveTags(postId) {
+    if (!postId) return
     const extracted = [...new Set((caption.match(/#[\wÀ-ú]+/g) ?? []).map(t => t.slice(1).toLowerCase()))]
     const all = [...new Set([...extracted, ...tags.map(t => t.toLowerCase())])]
     if (all.length > 0) await supabase.from('post_tags').insert(all.map(tag => ({ post_id: postId, tag })))
   }
 
   async function publishImage() {
+    if (!user?.id) return alert('Sessão expirada. Recarregue a página e tente novamente.')
     if (!caption || !croppedBlob) return alert('Adicione uma foto e legenda.')
     setLoading(true)
     try {
       const filename = `${Date.now()}.jpg`
       await supabase.storage.from('post-images').upload(filename, croppedBlob, { contentType: 'image/jpeg' })
       const { data: urlData } = supabase.storage.from('post-images').getPublicUrl(filename)
-      const { data: post } = await supabase.from('posts').insert({ user_id: user.id, caption, image_url: urlData.publicUrl }).select().single()
+      const { data: post, error: postError } = await supabase.from('posts').insert({ user_id: user.id, caption, image_url: urlData.publicUrl }).select().single()
+      if (postError) throw postError
       await saveTags(post.id)
       reset(); onPost()
     } catch (e) { alert(e.message) }
@@ -279,6 +282,7 @@ export default function NewPost({ user, onPost }) {
   }
 
   async function publishVideo() {
+    if (!user?.id) return alert('Sessão expirada. Recarregue a página e tente novamente.')
     if (!caption || !trimmedBlob) return alert('Adicione um vídeo e legenda.')
     setLoading(true)
     try {
@@ -286,7 +290,8 @@ export default function NewPost({ user, onPost }) {
       const filename = `videos/${Date.now()}.${ext}`
       await supabase.storage.from('post-images').upload(filename, trimmedBlob, { contentType: trimmedMime })
       const { data: urlData } = supabase.storage.from('post-images').getPublicUrl(filename)
-      const { data: post } = await supabase.from('posts').insert({ user_id: user.id, caption, video_url: urlData.publicUrl }).select().single()
+      const { data: post, error: postError } = await supabase.from('posts').insert({ user_id: user.id, caption, video_url: urlData.publicUrl }).select().single()
+      if (postError) throw postError
       await saveTags(post.id)
       reset(); onPost()
     } catch (e) { alert(e.message) }
@@ -355,7 +360,7 @@ export default function NewPost({ user, onPost }) {
       )}
 
       {/* Editor de corte de vídeo */}
-      {step === 'video-trim' && videoFile && (
+      {step === 'video-trim' && videoFile && videoDuration > 0 && (
         <VideoTrimmer file={videoFile} duration={videoDuration} onConfirm={onTrimConfirm} onCancel={reset} />
       )}
 
