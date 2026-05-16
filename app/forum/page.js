@@ -71,14 +71,9 @@ function ReplyItem({ reply, user, t, onDelete, replyingTo, setReplyingTo, replyT
       </div>
       {isReplying && (
         <div style={{ marginLeft: indent + 40, marginRight: 20, marginBottom: 8, display: 'flex', gap: 8, alignItems: 'center' }}>
-          <input
-            autoFocus
-            value={replyText}
-            onChange={e => setReplyText(e.target.value)}
-            onKeyDown={e => e.key === 'Enter' && sendSubReply(reply.id)}
+          <input autoFocus value={replyText} onChange={e => setReplyText(e.target.value)} onKeyDown={e => e.key === 'Enter' && sendSubReply(reply.id)}
             placeholder={t.replyTo(reply.profiles?.username ?? '')}
-            style={{ flex: 1, border: '1px solid #D6ECC4', borderRadius: 20, padding: '8px 14px', fontSize: 13, outline: 'none', fontFamily: 'inherit', background: '#F4FAF0', color: '#27500A' }}
-          />
+            style={{ flex: 1, border: '1px solid #D6ECC4', borderRadius: 20, padding: '8px 14px', fontSize: 13, outline: 'none', fontFamily: 'inherit', background: '#F4FAF0', color: '#27500A' }} />
           <button onClick={() => sendSubReply(reply.id)} disabled={loadingSubReply || !replyText.trim()} style={{ background: replyText.trim() ? '#3B6D11' : '#C5E4A7', border: 'none', borderRadius: 20, padding: '8px 14px', fontSize: 13, fontWeight: 500, color: '#EAF3DE', cursor: replyText.trim() ? 'pointer' : 'default', fontFamily: 'inherit', whiteSpace: 'nowrap' }}>
             {loadingSubReply ? '...' : t.send}
           </button>
@@ -96,11 +91,18 @@ export default function ForumPage() {
   const [posts, setPosts] = useState([])
   const [filter, setFilter] = useState(null)
   const [user, setUser] = useState(null)
+
+  // novo tópico
   const [title, setTitle] = useState('')
   const [body, setBody] = useState('')
   const [category, setCategory] = useState(null)
   const [loading, setLoading] = useState(false)
   const [showForm, setShowForm] = useState(false)
+  const [imageFile, setImageFile] = useState(null)
+  const [imagePreview, setImagePreview] = useState(null)
+  const fileInputRef = useRef(null)
+
+  // modal do tópico
   const [selectedPost, setSelectedPost] = useState(null)
   const [replies, setReplies] = useState([])
   const [newReply, setNewReply] = useState('')
@@ -108,9 +110,13 @@ export default function ForumPage() {
   const [replyingTo, setReplyingTo] = useState(null)
   const [replyText, setReplyText] = useState('')
   const [loadingSubReply, setLoadingSubReply] = useState(false)
-  const [imageFile, setImageFile] = useState(null)
-  const [imagePreview, setImagePreview] = useState(null)
-  const fileInputRef = useRef(null)
+
+  // edição do tópico
+  const [editing, setEditing] = useState(false)
+  const [editTitle, setEditTitle] = useState('')
+  const [editBody, setEditBody] = useState('')
+  const [editCategory, setEditCategory] = useState(null)
+  const [saving, setSaving] = useState(false)
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => setUser(data.session?.user ?? null))
@@ -138,6 +144,29 @@ export default function ForumPage() {
     setImagePreview(URL.createObjectURL(file))
   }
 
+  function openEdit() {
+    setEditTitle(selectedPost.title)
+    setEditBody(selectedPost.body ?? '')
+    setEditCategory(selectedPost.category)
+    setEditing(true)
+  }
+
+  async function saveEdit() {
+    if (!editTitle.trim() || !editCategory) return alert(t.chooseCategoryAndTitle)
+    setSaving(true)
+    await supabase.from('forum_posts').update({
+      title: editTitle.trim(),
+      body: editBody.trim(),
+      category: editCategory,
+    }).eq('id', selectedPost.id)
+    // atualiza o post selecionado localmente
+    const updated = { ...selectedPost, title: editTitle.trim(), body: editBody.trim(), category: editCategory }
+    setSelectedPost(updated)
+    setSaving(false)
+    setEditing(false)
+    load()
+  }
+
   async function publish() {
     if (!title || !category) return alert(t.chooseCategoryAndTitle)
     setLoading(true)
@@ -163,11 +192,7 @@ export default function ForumPage() {
     await supabase.from('forum_replies').insert({ forum_post_id: selectedPost.id, user_id: user.id, body: newReply.trim(), parent_reply_id: null })
     if (selectedPost.user_id !== user.id) {
       const { data: profile } = await supabase.from('profiles').select('username').eq('id', user.id).single()
-      await supabase.from('notifications').insert({
-        user_id: selectedPost.user_id, from_user_id: user.id, type: 'forum_reply',
-        forum_post_id: selectedPost.id,
-        message: t.replied(profile?.username ?? '...', selectedPost.title.slice(0, 50))
-      })
+      await supabase.from('notifications').insert({ user_id: selectedPost.user_id, from_user_id: user.id, type: 'forum_reply', forum_post_id: selectedPost.id, message: t.replied(profile?.username ?? '...', selectedPost.title.slice(0, 50)) })
     }
     setNewReply('')
     await loadReplies(selectedPost.id)
@@ -182,11 +207,7 @@ export default function ForumPage() {
     await supabase.from('forum_replies').insert({ forum_post_id: selectedPost.id, user_id: user.id, body: replyText.trim(), parent_reply_id: parentReplyId })
     if (parentReply && parentReply.user_id !== user.id) {
       const { data: profile } = await supabase.from('profiles').select('username').eq('id', user.id).single()
-      await supabase.from('notifications').insert({
-        user_id: parentReply.user_id, from_user_id: user.id, type: 'forum_reply',
-        forum_post_id: selectedPost.id,
-        message: t.repliedComment(profile?.username ?? '...', selectedPost.title.slice(0, 40))
-      })
+      await supabase.from('notifications').insert({ user_id: parentReply.user_id, from_user_id: user.id, type: 'forum_reply', forum_post_id: selectedPost.id, message: t.repliedComment(profile?.username ?? '...', selectedPost.title.slice(0, 40)) })
     }
     setReplyText(''); setReplyingTo(null)
     await loadReplies(selectedPost.id)
@@ -203,48 +224,116 @@ export default function ForumPage() {
     if (!confirm(t.deletePostConfirm)) return
     await supabase.from('forum_replies').delete().eq('forum_post_id', postId)
     await supabase.from('forum_posts').delete().eq('id', postId)
+    setSelectedPost(null)
     load()
   }
 
   const replyTree = buildTree(replies)
+  const isPostOwner = user && selectedPost && user.id === selectedPost.user_id
 
   return (
     <div>
+
+      {/* ── MODAL DO TÓPICO ── */}
       {selectedPost && (
-        <div onClick={() => { setSelectedPost(null); setReplyingTo(null); setReplyText('') }} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: 20 }}>
+        <div onClick={() => { setSelectedPost(null); setReplyingTo(null); setReplyText(''); setEditing(false) }}
+          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: 20 }}>
           <div onClick={e => e.stopPropagation()} style={{ background: '#fff', borderRadius: 20, width: '100%', maxWidth: 860, maxHeight: '90vh', display: 'flex', flexDirection: 'row', overflow: 'hidden', boxShadow: '0 12px 48px rgba(0,0,0,0.2)' }} className="forum-modal-inner">
+
+            {/* Imagem lateral */}
             {selectedPost.image_url && (
               <div style={{ flex: '0 0 420px', background: '#0a0a0a', display: 'flex', alignItems: 'center', justifyContent: 'center' }} className="forum-modal-img-col">
                 <img src={selectedPost.image_url} alt="" style={{ width: '100%', height: '100%', objectFit: 'contain', maxHeight: '90vh' }} />
               </div>
             )}
+
+            {/* Conteúdo direito */}
             <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, maxHeight: '90vh' }}>
-              <div style={{ padding: '16px 20px', borderBottom: '0.5px solid #E2F2D4', display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', flexShrink: 0, gap: 12 }}>
+
+              {/* Header */}
+              <div style={{ padding: '14px 20px', borderBottom: '0.5px solid #E2F2D4', display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', flexShrink: 0, gap: 12 }}>
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  {selectedPost.category && (() => {
+                  {!editing && selectedPost.category && (() => {
                     const [bg, fg] = BADGE[selectedPost.category] ?? ['#F1EFE8', '#444']
-                    return <span style={{ background: bg, color: fg, fontSize: 10, fontWeight: 600, padding: '3px 9px', borderRadius: 20, display: 'inline-block', marginBottom: 8 }}>{selectedPost.category}</span>
+                    return <span style={{ background: bg, color: fg, fontSize: 10, fontWeight: 600, padding: '3px 9px', borderRadius: 20, display: 'inline-block', marginBottom: 6 }}>{selectedPost.category}</span>
                   })()}
-                  <p style={{ fontWeight: 600, fontSize: 15, color: '#1a1a1a', lineHeight: 1.4, marginBottom: 6 }}>{selectedPost.title}</p>
-                  {selectedPost.body && <p style={{ fontSize: 13, color: '#888780', lineHeight: 1.5, marginBottom: 6 }}>{selectedPost.body}</p>}
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <Avatar profile={selectedPost.profiles} size={22} />
-                    <span style={{ fontSize: 12, color: '#B4B2A9' }}>{t.by} {selectedPost.profiles?.username}</span>
-                  </div>
+                  {!editing && <p style={{ fontWeight: 600, fontSize: 15, color: '#1a1a1a', lineHeight: 1.4, marginBottom: 4 }}>{selectedPost.title}</p>}
+                  {!editing && selectedPost.body && <p style={{ fontSize: 13, color: '#888780', lineHeight: 1.5, marginBottom: 6 }}>{selectedPost.body}</p>}
+                  {!editing && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <Avatar profile={selectedPost.profiles} size={20} />
+                      <span style={{ fontSize: 12, color: '#B4B2A9' }}>{t.by} {selectedPost.profiles?.username}</span>
+                    </div>
+                  )}
+
+                  {/* Formulário de edição inline */}
+                  {editing && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                        {CATS.slice(1).map(c => (
+                          <button key={c} onClick={() => setEditCategory(c)} style={{ padding: '4px 12px', borderRadius: 20, fontSize: 11, cursor: 'pointer', border: '0.5px solid #C5E4A7', background: editCategory === c ? '#EAF3DE' : '#fff', color: editCategory === c ? '#3B6D11' : '#888780', fontWeight: editCategory === c ? 600 : 400 }}>{c}</button>
+                        ))}
+                      </div>
+                      <input
+                        value={editTitle}
+                        onChange={e => setEditTitle(e.target.value)}
+                        placeholder={t.yourQuestion}
+                        style={{ border: '1px solid #D6ECC4', borderRadius: 10, padding: '8px 12px', fontSize: 13, outline: 'none', fontFamily: 'inherit', background: '#F4FAF0', color: '#27500A' }}
+                      />
+                      <textarea
+                        value={editBody}
+                        onChange={e => setEditBody(e.target.value)}
+                        placeholder={t.moreDetails}
+                        rows={3}
+                        style={{ border: '1px solid #D6ECC4', borderRadius: 10, padding: '8px 12px', fontSize: 13, outline: 'none', fontFamily: 'inherit', background: '#F4FAF0', color: '#27500A', resize: 'none' }}
+                      />
+                      <div style={{ display: 'flex', gap: 8 }}>
+                        <button onClick={() => setEditing(false)} style={{ flex: 1, background: '#fff', border: '0.5px solid #C5E4A7', borderRadius: 10, padding: '8px 0', fontSize: 12, cursor: 'pointer', color: '#888780', fontFamily: 'inherit' }}>
+                          {t.cancel}
+                        </button>
+                        <button onClick={saveEdit} disabled={saving} style={{ flex: 2, background: '#3B6D11', border: 'none', borderRadius: 10, padding: '8px 0', fontSize: 12, fontWeight: 600, cursor: 'pointer', color: '#EAF3DE', fontFamily: 'inherit' }}>
+                          {saving ? '...' : 'Salvar'}
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
-                <button onClick={() => { setSelectedPost(null); setReplyingTo(null); setReplyText('') }} style={{ background: 'none', border: 'none', fontSize: 20, cursor: 'pointer', color: '#B4B2A9', flexShrink: 0, lineHeight: 1, padding: 2 }}>✕</button>
+
+                {/* Botões editar/excluir/fechar */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
+                  {isPostOwner && !editing && (
+                    <>
+                      <button onClick={openEdit} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#B4B2A9', fontSize: 12, padding: '4px 8px', borderRadius: 8 }}
+                        onMouseOver={e => e.target.style.color = '#3B6D11'} onMouseOut={e => e.target.style.color = '#B4B2A9'}>
+                        editar
+                      </button>
+                      <button onClick={() => deleteForumPost(selectedPost.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#B4B2A9', fontSize: 12, padding: '4px 8px', borderRadius: 8 }}
+                        onMouseOver={e => e.target.style.color = '#993C1D'} onMouseOut={e => e.target.style.color = '#B4B2A9'}>
+                        {t.delete}
+                      </button>
+                    </>
+                  )}
+                  <button onClick={() => { setSelectedPost(null); setReplyingTo(null); setReplyText(''); setEditing(false) }}
+                    style={{ background: 'none', border: 'none', fontSize: 20, cursor: 'pointer', color: '#B4B2A9', lineHeight: 1, padding: '4px' }}>✕</button>
+                </div>
               </div>
+
+              {/* Imagem mobile */}
               {selectedPost.image_url && (
                 <div style={{ display: 'none' }} className="forum-modal-img-mobile">
                   <img src={selectedPost.image_url} alt="" style={{ width: '100%', maxHeight: 220, objectFit: 'cover' }} />
                 </div>
               )}
+
+              {/* Respostas */}
               <div style={{ flex: 1, overflowY: 'auto', padding: '8px 0', position: 'relative' }}>
                 {replyTree.length === 0 && <p style={{ textAlign: 'center', color: '#888', fontSize: 13, padding: 32 }}>{t.noRepliesYet}</p>}
                 {replyTree.map(reply => (
                   <ReplyItem key={reply.id} reply={reply} user={user} t={t} onDelete={deleteReply} replyingTo={replyingTo} setReplyingTo={setReplyingTo} replyText={replyText} setReplyText={setReplyText} sendSubReply={sendSubReply} loadingSubReply={loadingSubReply} depth={0} />
                 ))}
               </div>
+
+              {/* Input resposta */}
               {user ? (
                 <div style={{ padding: '12px 20px', borderTop: '0.5px solid #E2F2D4', display: 'flex', gap: 8, flexShrink: 0 }}>
                   <input value={newReply} onChange={e => setNewReply(e.target.value)} onKeyDown={e => e.key === 'Enter' && sendReply()} placeholder={t.writeReply}
@@ -261,11 +350,13 @@ export default function ForumPage() {
         </div>
       )}
 
+      {/* ── HEADER ── */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
         <h1 style={{ fontSize: 20, fontWeight: 500, color: '#27500A' }}>{t.forumTitle}</h1>
         {user && <button onClick={() => setShowForm(!showForm)} style={{ background: '#3B6D11', color: '#EAF3DE', border: 'none', borderRadius: 20, padding: '7px 16px', fontSize: 13, fontWeight: 500, cursor: 'pointer' }}>{t.newQuestion}</button>}
       </div>
 
+      {/* ── FORMULÁRIO NOVO TÓPICO ── */}
       {showForm && (
         <div style={{ background: '#fff', borderRadius: 16, border: '0.5px solid #E2F2D4', padding: 16, marginBottom: 20 }}>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
@@ -294,6 +385,7 @@ export default function ForumPage() {
         </div>
       )}
 
+      {/* ── FILTROS ── */}
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 16 }}>
         {CATS.map(f => (
           <button key={f ?? 'todos'} onClick={() => setFilter(f)} style={{ padding: '5px 14px', borderRadius: 20, fontSize: 12, cursor: 'pointer', border: '0.5px solid #C5E4A7', background: filter === f ? '#3B6D11' : '#fff', color: filter === f ? '#EAF3DE' : '#888780' }}>
@@ -302,12 +394,14 @@ export default function ForumPage() {
         ))}
       </div>
 
+      {/* ── LISTA DE TÓPICOS ── */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
         {posts.map(post => {
           const [bg, fg] = BADGE[post.category] ?? ['#F1EFE8', '#444']
           const isOwner = user && user.id === post.user_id
           return (
-            <div key={post.id} onClick={() => setSelectedPost(post)} style={{ background: '#fff', borderRadius: 14, border: '0.5px solid #E2F2D4', overflow: 'hidden', cursor: 'pointer', transition: 'box-shadow 0.15s' }}
+            <div key={post.id} onClick={() => { setSelectedPost(post); setEditing(false) }}
+              style={{ background: '#fff', borderRadius: 14, border: '0.5px solid #E2F2D4', overflow: 'hidden', cursor: 'pointer', transition: 'box-shadow 0.15s' }}
               onMouseOver={e => e.currentTarget.style.boxShadow = '0 2px 12px rgba(0,0,0,0.07)'}
               onMouseOut={e => e.currentTarget.style.boxShadow = 'none'}>
               {post.image_url && <img src={post.image_url} alt="" style={{ width: '100%', height: 140, objectFit: 'cover', display: 'block' }} />}
@@ -315,7 +409,8 @@ export default function ForumPage() {
                 <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 8 }}>
                   <span style={{ background: bg, color: fg, fontSize: 10, fontWeight: 500, padding: '3px 9px', borderRadius: 20 }}>{post.category}</span>
                   {isOwner && (
-                    <button onClick={e => { e.stopPropagation(); deleteForumPost(post.id) }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#B4B2A9', fontSize: 12, padding: '2px 6px', borderRadius: 6 }}
+                    <button onClick={e => { e.stopPropagation(); deleteForumPost(post.id) }}
+                      style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#B4B2A9', fontSize: 12, padding: '2px 6px', borderRadius: 6 }}
                       onMouseOver={e => e.target.style.color = '#993C1D'} onMouseOut={e => e.target.style.color = '#B4B2A9'}>
                       {t.delete}
                     </button>
