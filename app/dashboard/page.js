@@ -25,11 +25,16 @@ function Section({ title, children }) {
 }
 
 export default function DashboardPage() {
-  const [allowed, setAllowed] = useState(null) // null = loading
+  const [allowed, setAllowed] = useState(null)
+  const [tab, setTab] = useState('stats') // 'stats' | 'users'
   const [stats, setStats] = useState(null)
   const [topUsers, setTopUsers] = useState([])
   const [topPosts, setTopPosts] = useState([])
   const [recentUsers, setRecentUsers] = useState([])
+  const [allUsers, setAllUsers] = useState([])
+  const [deletingUser, setDeletingUser] = useState(null)
+  const [userSearch, setUserSearch] = useState('')
+  const [currentUserId, setCurrentUserId] = useState(null)
 
   useEffect(() => { checkAndLoad() }, [])
 
@@ -40,8 +45,10 @@ export default function DashboardPage() {
     const { data: adminRow } = await supabase.from('admins').select('user_id').eq('user_id', user.id).maybeSingle()
     if (!adminRow) { setAllowed(false); return }
 
+    setCurrentUserId(user.id)
     setAllowed(true)
     await loadStats()
+    await loadAllUsers()
   }
 
   async function loadStats() {
@@ -128,6 +135,27 @@ export default function DashboardPage() {
     if (recent) setRecentUsers(recent)
   }
 
+  async function loadAllUsers() {
+    const { data } = await supabase
+      .from('profiles')
+      .select('id, username, avatar_url, created_at')
+      .order('created_at', { ascending: false })
+    if (data) setAllUsers(data)
+  }
+
+  async function deleteUser(userId, username) {
+    if (!confirm(`Excluir a conta de @${username}? Esta ação é irreversível.`)) return
+    setDeletingUser(userId)
+    try {
+      const { error } = await supabase.rpc('admin_delete_user', { target_user_id: userId })
+      if (error) throw error
+      setAllUsers(prev => prev.filter(u => u.id !== userId))
+    } catch (e) {
+      alert('Erro ao excluir: ' + e.message)
+    }
+    setDeletingUser(null)
+  }
+
   if (allowed === null) return (
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '60vh' }}>
       <p style={{ color: '#B4B2A9', fontSize: 14 }}>Verificando acesso...</p>
@@ -149,22 +177,91 @@ export default function DashboardPage() {
     return `${Math.floor(diff / 86400)}d atrás`
   }
 
+  const filteredUsers = allUsers.filter(u =>
+    u.username?.toLowerCase().includes(userSearch.toLowerCase())
+  )
+
   return (
     <div style={{ maxWidth: 780, margin: '0 auto' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 28 }}>
+      {/* Header */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 20 }}>
         <span style={{ fontSize: 24 }}>🌿</span>
         <div>
           <h1 style={{ fontSize: 20, fontWeight: 600, color: '#27500A' }}>Dashboard</h1>
           <p style={{ fontSize: 12, color: '#B4B2A9' }}>Visão geral da plataforma</p>
         </div>
-        <button onClick={loadStats} style={{ marginLeft: 'auto', background: '#EAF3DE', border: 'none', borderRadius: 10, padding: '7px 14px', fontSize: 12, color: '#3B6D11', cursor: 'pointer', fontWeight: 500 }}>
+        <button onClick={() => { loadStats(); loadAllUsers() }} style={{ marginLeft: 'auto', background: '#EAF3DE', border: 'none', borderRadius: 10, padding: '7px 14px', fontSize: 12, color: '#3B6D11', cursor: 'pointer', fontWeight: 500 }}>
           ↻ Atualizar
         </button>
       </div>
 
-      {!stats ? (
+      {/* Abas */}
+      <div style={{ display: 'flex', gap: 4, marginBottom: 24, borderBottom: '1px solid #E2F2D4' }}>
+        {[{ key: 'stats', label: '📊 Estatísticas' }, { key: 'users', label: '👥 Usuários' }].map(({ key, label }) => (
+          <button key={key} onClick={() => setTab(key)} style={{
+            padding: '9px 18px', background: 'none', border: 'none', cursor: 'pointer',
+            fontSize: 13, fontWeight: 500,
+            color: tab === key ? '#3B6D11' : '#B4B2A9',
+            borderBottom: tab === key ? '2px solid #3B6D11' : '2px solid transparent',
+            marginBottom: -1, transition: 'all 0.15s'
+          }}>{label}</button>
+        ))}
+      </div>
+
+      {/* Aba Usuários */}
+      {tab === 'users' && (
+        <div>
+          <div style={{ marginBottom: 16 }}>
+            <input
+              value={userSearch}
+              onChange={e => setUserSearch(e.target.value)}
+              placeholder="Buscar por username..."
+              style={{ width: '100%', border: '1px solid #D6ECC4', borderRadius: 12, padding: '10px 16px', fontSize: 14, outline: 'none', background: '#F4FAF0', color: '#27500A', boxSizing: 'border-box' }}
+            />
+          </div>
+          <div style={{ background: '#fff', borderRadius: 16, border: '0.5px solid #E2F2D4', overflow: 'hidden' }}>
+            {filteredUsers.length === 0 && <p style={{ textAlign: 'center', color: '#B4B2A9', padding: 32, fontSize: 13 }}>Nenhum usuário encontrado</p>}
+            {filteredUsers.map((u, i) => {
+              const initial = (u.username?.[0] ?? '?').toUpperCase()
+              const isSelf = u.id === currentUserId
+              const isDeleting = deletingUser === u.id
+              return (
+                <div key={u.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px', borderBottom: i < filteredUsers.length - 1 ? '0.5px solid #F0F7EC' : 'none' }}>
+                  <div style={{ width: 38, height: 38, borderRadius: '50%', overflow: 'hidden', background: '#EAF3DE', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                    {u.avatar_url
+                      ? <img src={u.avatar_url} style={{ width: '100%', height: '100%', objectFit: 'cover' }} alt="" />
+                      : <span style={{ fontSize: 14, fontWeight: 600, color: '#3B6D11' }}>{initial}</span>
+                    }
+                  </div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <p style={{ fontSize: 14, fontWeight: 500, color: '#1a1a1a', margin: 0 }}>@{u.username}</p>
+                    <p style={{ fontSize: 11, color: '#B4B2A9', margin: '2px 0 0' }}>{timeAgo(u.created_at)}</p>
+                  </div>
+                  {isSelf
+                    ? <span style={{ fontSize: 11, color: '#3B6D11', background: '#EAF3DE', padding: '3px 10px', borderRadius: 20, fontWeight: 600 }}>você</span>
+                    : (
+                      <button
+                        onClick={() => deleteUser(u.id, u.username)}
+                        disabled={isDeleting}
+                        style={{ padding: '6px 14px', borderRadius: 20, fontSize: 12, fontWeight: 500, cursor: isDeleting ? 'default' : 'pointer', border: 'none', background: isDeleting ? '#F0F0F0' : '#FEF2F0', color: isDeleting ? '#B4B2A9' : '#993C1D', transition: 'all 0.15s', whiteSpace: 'nowrap' }}
+                      >
+                        {isDeleting ? 'excluindo...' : 'excluir conta'}
+                      </button>
+                    )
+                  }
+                </div>
+              )
+            })}
+          </div>
+          <p style={{ fontSize: 12, color: '#B4B2A9', textAlign: 'center', marginTop: 12 }}>{filteredUsers.length} usuário{filteredUsers.length !== 1 ? 's' : ''}</p>
+        </div>
+      )}
+
+      {/* Aba Estatísticas */}
+      {tab === 'stats' && !stats && (
         <p style={{ color: '#B4B2A9', textAlign: 'center', marginTop: 60 }}>Carregando estatísticas...</p>
-      ) : (
+      )}
+      {tab === 'stats' && stats && (
         <>
           {/* Usuários */}
           <Section title="Usuários">
