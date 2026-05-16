@@ -135,28 +135,14 @@ export default function PerfilPage() {
       {showFollowing && <FollowList title={`Seguindo (${stats.following})`} list={following} onClose={() => setShowFollowing(false)} />}
 
       {selectedPost && (
-        <div onClick={() => setSelectedPost(null)} style={{
-          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          zIndex: 1000, padding: 20, overflowY: 'auto'
-        }}>
-          <div onClick={e => e.stopPropagation()} style={{ width: '100%', maxWidth: 480, position: 'relative' }}>
-            <button onClick={() => setSelectedPost(null)} style={{
-              position: 'absolute', top: -14, right: -14, zIndex: 10,
-              background: 'rgba(255,255,255,0.15)', backdropFilter: 'blur(8px)',
-              border: '0.5px solid rgba(255,255,255,0.25)', color: '#fff',
-              width: 32, height: 32, borderRadius: '50%', fontSize: 16,
-              cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center'
-            }}>✕</button>
-            <PostCard
-              post={selectedPost}
-              user={user}
-              onLike={toggleLike}
-              onDelete={() => { setSelectedPost(null); load() }}
-              onTagClick={() => {}}
-            />
-          </div>
-        </div>
+        <CommentsModal
+          post={selectedPost}
+          user={user}
+          onLike={toggleLike}
+          onClose={() => setSelectedPost(null)}
+          onDelete={() => { setSelectedPost(null); load() }}
+          onTagClick={() => {}}
+        />
       )}
 
       {/* Header */}

@@ -9,7 +9,7 @@ function Caption({ text, onTagClick }) {
     <p style={{ fontSize: 14, color: '#333', lineHeight: 1.5, margin: '0 0 10px' }}>
       {parts.map((part, i) =>
         part.startsWith('#')
-          ? <span key={i} onClick={() => onTagClick(part.slice(1).toLowerCase())} style={{ color: '#3B6D11', fontWeight: 500, cursor: 'pointer' }}>{part}</span>
+          ? <span key={i} onClick={() => onTagClick?.(part.slice(1).toLowerCase())} style={{ color: '#3B6D11', fontWeight: 500, cursor: 'pointer' }}>{part}</span>
           : <span key={i}>{part}</span>
       )}
     </p>
@@ -99,12 +99,16 @@ function CommentItem({ comment, user, onDelete }) {
   )
 }
 
-// Modal de comentários isolado — usado pelos perfis
-function CommentsModal({ post, user, onLike, onClose }) {
+// ── Modal unificado: foto/vídeo + comentários + editar/excluir ───────
+function PostModal({ post: initialPost, user, onLike, onClose, onDelete, onTagClick }) {
+  const [post, setPost] = useState(initialPost)
   const [comments, setComments] = useState([])
   const [newComment, setNewComment] = useState('')
   const [loadingComment, setLoadingComment] = useState(false)
   const [showLikes, setShowLikes] = useState(false)
+  const [editing, setEditing] = useState(false)
+  const [newCaption, setNewCaption] = useState(initialPost.caption ?? '')
+  const [saving, setSaving] = useState(false)
   const liked = user && post.post_likes?.some(l => l.user_id === user.id)
   const likeCount = post.post_likes?.length ?? 0
   const isOwner = user && user.id === post.user_id
@@ -118,7 +122,7 @@ function CommentsModal({ post, user, onLike, onClose }) {
   }
 
   async function sendComment() {
-    if (!newComment.trim()) return
+    if (!newComment.trim() || !user) return
     setLoadingComment(true)
     await supabase.from('comments').insert({ post_id: post.id, user_id: user.id, body: newComment.trim() })
     if (post.user_id !== user.id) {
@@ -135,10 +139,43 @@ function CommentsModal({ post, user, onLike, onClose }) {
     loadComments()
   }
 
+  async function handleLike() {
+    await onLike(post.id)
+    // atualiza like localmente sem fechar o modal
+    const { data } = await supabase.from('posts').select('post_likes(id, user_id, profiles(username, avatar_url))').eq('id', post.id).single()
+    if (data) setPost(p => ({ ...p, post_likes: data.post_likes }))
+  }
+
+  async function deletePost() {
+    if (!confirm('Tem certeza que quer excluir este post?')) return
+    await supabase.from('post_tags').delete().eq('post_id', post.id)
+    await supabase.from('post_likes').delete().eq('post_id', post.id)
+    await supabase.from('comments').delete().eq('post_id', post.id)
+    await supabase.from('posts').delete().eq('id', post.id)
+    onClose()
+    if (onDelete) onDelete()
+  }
+
+  async function saveEdit() {
+    if (!newCaption.trim()) return alert('A legenda não pode ficar vazia.')
+    setSaving(true)
+    await supabase.from('posts').update({ caption: newCaption }).eq('id', post.id)
+    const matches = newCaption.match(/#[\wÀ-ú]+/g) ?? []
+    const tags = [...new Set(matches.map(t => t.slice(1).toLowerCase()))]
+    await supabase.from('post_tags').delete().eq('post_id', post.id)
+    if (tags.length > 0) await supabase.from('post_tags').insert(tags.map(tag => ({ post_id: post.id, tag })))
+    setPost(p => ({ ...p, caption: newCaption }))
+    setSaving(false); setEditing(false)
+    if (onDelete) onDelete() // refresh no feed/perfil
+  }
+
+  const likedList = post.post_likes ?? []
+
   return (
     <>
+      {/* Modal de curtidas */}
       {showLikes && (
-        <div onClick={() => setShowLikes(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1100, padding: 20 }}>
+        <div onClick={() => setShowLikes(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1200, padding: 20 }}>
           <div onClick={e => e.stopPropagation()} style={{ background: '#fff', borderRadius: 20, width: '100%', maxWidth: 370, maxHeight: '60vh', overflow: 'hidden', display: 'flex', flexDirection: 'column', boxShadow: '0 8px 40px rgba(0,0,0,0.15)' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 16px 12px', borderBottom: '0.5px solid #E2F2D4', flexShrink: 0 }}>
               <span style={{ fontWeight: 500, fontSize: 15, color: '#27500A' }}>♥ Curtidas ({likeCount})</span>
@@ -146,7 +183,7 @@ function CommentsModal({ post, user, onLike, onClose }) {
             </div>
             <div style={{ overflowY: 'auto', padding: '8px 0' }}>
               {likeCount === 0 && <p style={{ textAlign: 'center', color: '#888', fontSize: 13, padding: 24 }}>Nenhuma curtida ainda 🌱</p>}
-              {post.post_likes?.map(like => (
+              {likedList.map(like => (
                 <div key={like.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 16px' }}>
                   <Avatar url={like.profiles?.avatar_url} name={like.profiles?.username} />
                   <span style={{ fontSize: 14, color: '#1a1a1a', fontWeight: 500 }}>{like.profiles?.username ?? 'usuário'}</span>
@@ -157,8 +194,40 @@ function CommentsModal({ post, user, onLike, onClose }) {
         </div>
       )}
 
+      {/* Modal de edição */}
+      {editing && (
+        <div onClick={() => setEditing(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1200, padding: 20 }}>
+          <div onClick={e => e.stopPropagation()} style={{ background: '#F4FAF0', borderRadius: 20, width: '100%', maxWidth: 420, padding: '20px 16px 24px', boxShadow: '0 8px 40px rgba(0,0,0,0.15)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+              <span style={{ fontWeight: 500, fontSize: 15, color: '#27500A' }}>Editar post</span>
+              <button onClick={() => setEditing(false)} style={{ background: 'none', border: 'none', fontSize: 18, cursor: 'pointer', color: '#888780' }}>✕</button>
+            </div>
+            {post.image_url && <img src={post.image_url} alt="" style={{ width: '100%', height: 160, objectFit: 'cover', borderRadius: 12, marginBottom: 12 }} />}
+            <textarea
+              value={newCaption}
+              onChange={e => setNewCaption(e.target.value)}
+              rows={4}
+              style={{ width: '100%', border: '0.5px solid #C5E4A7', borderRadius: 10, padding: 10, fontSize: 13, fontFamily: 'inherit', resize: 'none', outline: 'none', background: '#fff', marginBottom: 12, boxSizing: 'border-box' }}
+            />
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button onClick={() => setEditing(false)} style={{ flex: 1, background: '#fff', border: '0.5px solid #C5E4A7', borderRadius: 10, padding: '11px 0', fontSize: 13, cursor: 'pointer', color: '#888780', fontFamily: 'inherit' }}>Cancelar</button>
+              <button onClick={saveEdit} disabled={saving} style={{ flex: 1, background: '#3B6D11', border: 'none', borderRadius: 10, padding: '11px 0', fontSize: 13, fontWeight: 500, cursor: 'pointer', color: '#EAF3DE', fontFamily: 'inherit' }}>{saving ? 'Salvando...' : 'Salvar'}</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal principal */}
       <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: 20 }}>
-        <div onClick={e => e.stopPropagation()} style={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', borderRadius: 20, overflow: 'hidden', width: '100%', maxWidth: isMobile ? 420 : 860, maxHeight: '90vh', boxShadow: '0 8px 40px rgba(0,0,0,0.4)' }}>
+        <div onClick={e => e.stopPropagation()} style={{
+          display: 'flex', flexDirection: isMobile ? 'column' : 'row',
+          borderRadius: 20, overflow: 'hidden',
+          width: '100%', maxWidth: isMobile ? 420 : 900,
+          maxHeight: '90vh',
+          boxShadow: '0 8px 40px rgba(0,0,0,0.4)'
+        }}>
+
+          {/* Coluna esquerda — mídia */}
           {!isMobile && (post.image_url || post.video_url) && (
             <div style={{ flex: 1, background: '#000', display: 'flex', alignItems: 'center', justifyContent: 'center', minWidth: 0 }}>
               {post.video_url
@@ -167,45 +236,78 @@ function CommentsModal({ post, user, onLike, onClose }) {
               }
             </div>
           )}
-          <div style={{ width: isMobile ? '100%' : 340, background: '#fff', display: 'flex', flexDirection: 'column', flexShrink: 0, maxHeight: isMobile ? '90vh' : 'auto' }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 16px', borderBottom: '0.5px solid #E2F2D4', flexShrink: 0 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+
+          {/* Coluna direita — info + comentários */}
+          <div style={{ width: isMobile ? '100%' : 360, background: '#fff', display: 'flex', flexDirection: 'column', flexShrink: 0, maxHeight: isMobile ? '90vh' : 'auto' }}>
+
+            {/* Header: avatar + username + editar/excluir + fechar */}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', borderBottom: '0.5px solid #E2F2D4', flexShrink: 0, gap: 8 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
                 <Avatar url={post.profiles?.avatar_url} name={post.profiles?.username} size={32} />
-                <a href={`/perfil/${post.user_id}`} style={{ fontWeight: 500, fontSize: 13, color: '#1a1a1a', textDecoration: 'none' }}>{post.profiles?.username ?? 'usuário'}</a>
+                <a href={`/perfil/${post.user_id}`} style={{ fontWeight: 500, fontSize: 13, color: '#1a1a1a', textDecoration: 'none', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {post.profiles?.username ?? 'usuário'}
+                </a>
               </div>
-              <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: 18, cursor: 'pointer', color: '#888780' }}>✕</button>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
+                {isOwner && (
+                  <>
+                    <button onClick={() => setEditing(true)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#B4B2A9', fontSize: 12, padding: '4px 8px', borderRadius: 8 }} onMouseOver={e => e.target.style.color = '#3B6D11'} onMouseOut={e => e.target.style.color = '#B4B2A9'}>editar</button>
+                    <button onClick={deletePost} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#B4B2A9', fontSize: 12, padding: '4px 8px', borderRadius: 8 }} onMouseOver={e => e.target.style.color = '#993C1D'} onMouseOut={e => e.target.style.color = '#B4B2A9'}>excluir</button>
+                  </>
+                )}
+                <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: 18, cursor: 'pointer', color: '#B4B2A9', padding: '4px' }}>✕</button>
+              </div>
             </div>
+
+            {/* Mídia mobile */}
             {isMobile && (post.image_url || post.video_url) && (
               <div style={{ background: '#000', flexShrink: 0 }}>
                 {post.video_url
-                  ? <video src={post.video_url} controls playsInline style={{ width: '100%', maxHeight: 240, display: 'block' }} />
-                  : <img src={post.image_url} alt="post" style={{ width: '100%', maxHeight: 240, objectFit: 'contain', display: 'block' }} />
+                  ? <video src={post.video_url} controls playsInline style={{ width: '100%', maxHeight: 260, display: 'block' }} />
+                  : <img src={post.image_url} alt="post" style={{ width: '100%', maxHeight: 260, objectFit: 'contain', display: 'block' }} />
                 }
               </div>
             )}
+
+            {/* Legenda */}
             {post.caption && (
-              <div style={{ padding: '12px 16px', borderBottom: '0.5px solid #F0F7EC', flexShrink: 0 }}>
+              <div style={{ padding: '10px 16px', borderBottom: '0.5px solid #F0F7EC', flexShrink: 0 }}>
                 <p style={{ fontSize: 13, color: '#333', lineHeight: 1.5, margin: 0 }}>
-                  <span style={{ fontWeight: 500, marginRight: 6 }}>{post.profiles?.username}</span>{post.caption}
+                  <span style={{ fontWeight: 600, marginRight: 6 }}>{post.profiles?.username}</span>
+                  <Caption text={post.caption} onTagClick={onTagClick} />
                 </p>
               </div>
             )}
+
+            {/* Comentários */}
             <div style={{ overflowY: 'auto', flex: 1 }}>
               {comments.length === 0 && <p style={{ textAlign: 'center', color: '#888', fontSize: 13, padding: 24 }}>Nenhum comentário ainda. Seja o primeiro! 🌱</p>}
               {comments.map(comment => <CommentItem key={comment.id} comment={comment} user={user} onDelete={deleteComment} />)}
             </div>
+
+            {/* Curtidas */}
             <div style={{ padding: '10px 16px', borderTop: '0.5px solid #F0F7EC', flexShrink: 0, display: 'flex', alignItems: 'center', gap: 12 }}>
-              <button onClick={() => onLike(post.id)} style={{ background: 'none', border: 'none', cursor: user ? 'pointer' : 'default', display: 'flex', alignItems: 'center', gap: 5, padding: 0 }}>
-                <span style={{ fontSize: 18, color: liked ? '#3B6D11' : '#B4B2A9' }}>♥</span>
+              <button onClick={handleLike} style={{ background: 'none', border: 'none', cursor: user ? 'pointer' : 'default', display: 'flex', alignItems: 'center', gap: 5, padding: 0 }}>
+                <span style={{ fontSize: 20, color: liked ? '#3B6D11' : '#B4B2A9', transition: 'color 0.15s' }}>♥</span>
                 <span style={{ fontSize: 13, color: '#888780' }}>{likeCount}</span>
               </button>
-              {isOwner && likeCount > 0 && (
-                <button onClick={() => setShowLikes(true)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 12, color: '#3B6D11', padding: 0, textDecoration: 'underline' }}>ver quem curtiu</button>
+              {likeCount > 0 && (
+                <button onClick={() => setShowLikes(true)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 12, color: '#3B6D11', padding: 0, textDecoration: 'underline' }}>
+                  ver quem curtiu
+                </button>
               )}
             </div>
+
+            {/* Input de comentário */}
             {user && (
-              <div style={{ padding: '12px 16px', borderTop: '0.5px solid #E2F2D4', display: 'flex', gap: 8, flexShrink: 0 }}>
-                <input value={newComment} onChange={e => setNewComment(e.target.value)} onKeyDown={e => e.key === 'Enter' && sendComment()} placeholder="Adicione um comentário..." style={{ flex: 1, border: '0.5px solid #C5E4A7', borderRadius: 20, padding: '9px 14px', fontSize: 13, outline: 'none', fontFamily: 'inherit', background: '#F4FAF0' }} />
+              <div style={{ padding: '10px 16px', borderTop: '0.5px solid #E2F2D4', display: 'flex', gap: 8, flexShrink: 0 }}>
+                <input
+                  value={newComment}
+                  onChange={e => setNewComment(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && sendComment()}
+                  placeholder="Adicione um comentário..."
+                  style={{ flex: 1, border: '0.5px solid #C5E4A7', borderRadius: 20, padding: '9px 14px', fontSize: 13, outline: 'none', fontFamily: 'inherit', background: '#F4FAF0' }}
+                />
                 <button onClick={sendComment} disabled={loadingComment || !newComment.trim()} style={{ background: newComment.trim() ? '#3B6D11' : '#C5E4A7', border: 'none', borderRadius: 20, padding: '9px 16px', fontSize: 13, fontWeight: 500, color: '#EAF3DE', cursor: newComment.trim() ? 'pointer' : 'default', fontFamily: 'inherit' }}>
                   {loadingComment ? '...' : 'Enviar'}
                 </button>
@@ -218,116 +320,31 @@ function CommentsModal({ post, user, onLike, onClose }) {
   )
 }
 
-export { CommentsModal }
+export { PostModal as CommentsModal }
 
 export default function PostCard({ post, user, onLike, onDelete, onTagClick }) {
-  const [showLikes, setShowLikes] = useState(false)
-  const [editing, setEditing] = useState(false)
-  const [showComments, setShowComments] = useState(false)
-  const [comments, setComments] = useState([])
-  const [newComment, setNewComment] = useState('')
-  const [loadingComment, setLoadingComment] = useState(false)
-  const [newCaption, setNewCaption] = useState(post.caption ?? '')
-  const [saving, setSaving] = useState(false)
+  const [showModal, setShowModal] = useState(false)
   const liked = user && post.post_likes?.some(l => l.user_id === user.id)
   const isOwner = user && user.id === post.user_id
   const likeCount = post.post_likes?.length ?? 0
   const previewComments = (post.comments ?? []).sort((a, b) => new Date(a.created_at) - new Date(b.created_at)).slice(0, 2)
   const totalComments = post.comments?.length ?? 0
 
-  useEffect(() => { if (showComments) loadComments() }, [showComments])
-
-  async function loadComments() {
-    const { data } = await supabase.from('comments').select('*, profiles(username, avatar_url), comment_replies(id)').eq('post_id', post.id).order('created_at', { ascending: true })
-    if (data) setComments(data)
-  }
-
-  async function sendComment() {
-    if (!newComment.trim()) return
-    setLoadingComment(true)
-    await supabase.from('comments').insert({ post_id: post.id, user_id: user.id, body: newComment.trim() })
-    if (post.user_id !== user.id) {
-      const { data: profile } = await supabase.from('profiles').select('username').eq('id', user.id).single()
-      await supabase.from('notifications').insert({ user_id: post.user_id, from_user_id: user.id, type: 'comment', post_id: post.id, message: `${profile?.username ?? 'Alguém'} comentou na sua foto: "${newComment.trim().slice(0, 50)}${newComment.length > 50 ? '...' : ''}"` })
-    }
-    setNewComment('')
-    await loadComments()
-    setLoadingComment(false)
-  }
-
-  async function deleteComment(commentId) {
-    await supabase.from('comments').delete().eq('id', commentId)
-    loadComments()
-  }
-
-  async function deletePost() {
-    if (!confirm('Tem certeza que quer excluir este post?')) return
-    await supabase.from('post_tags').delete().eq('post_id', post.id)
-    await supabase.from('post_likes').delete().eq('post_id', post.id)
-    await supabase.from('comments').delete().eq('post_id', post.id)
-    await supabase.from('posts').delete().eq('id', post.id)
-    if (onDelete) onDelete()
-  }
-
-  async function saveEdit() {
-    if (!newCaption.trim()) return alert('A legenda não pode ficar vazia.')
-    setSaving(true)
-    await supabase.from('posts').update({ caption: newCaption }).eq('id', post.id)
-    const matches = newCaption.match(/#[\wÀ-ú]+/g) ?? []
-    const tags = [...new Set(matches.map(t => t.slice(1).toLowerCase()))]
-    await supabase.from('post_tags').delete().eq('post_id', post.id)
-    if (tags.length > 0) await supabase.from('post_tags').insert(tags.map(tag => ({ post_id: post.id, tag })))
-    setSaving(false); setEditing(false)
-    if (onDelete) onDelete()
-  }
-
-  const overlayStyle = { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: 20 }
-  const modalStyle = { background: '#fff', borderRadius: 20, width: '100%', maxWidth: 370, display: 'flex', flexDirection: 'column', boxShadow: '0 8px 40px rgba(0,0,0,0.15)' }
-
   return (
     <>
-      {showLikes && (
-        <div onClick={() => setShowLikes(false)} style={overlayStyle}>
-          <div onClick={e => e.stopPropagation()} style={{ ...modalStyle, maxHeight: '60vh', overflow: 'hidden' }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 16px 12px', borderBottom: '0.5px solid #E2F2D4', flexShrink: 0 }}>
-              <span style={{ fontWeight: 500, fontSize: 15, color: '#27500A' }}>♥ Curtidas ({likeCount})</span>
-              <button onClick={() => setShowLikes(false)} style={{ background: 'none', border: 'none', fontSize: 18, cursor: 'pointer', color: '#888780' }}>✕</button>
-            </div>
-            <div style={{ overflowY: 'auto', padding: '8px 0' }}>
-              {likeCount === 0 && <p style={{ textAlign: 'center', color: '#888', fontSize: 13, padding: 24 }}>Nenhuma curtida ainda 🌱</p>}
-              {post.post_likes?.map(like => (
-                <div key={like.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 16px' }}>
-                  <Avatar url={like.profiles?.avatar_url} name={like.profiles?.username} />
-                  <span style={{ fontSize: 14, color: '#1a1a1a', fontWeight: 500 }}>{like.profiles?.username ?? 'usuário'}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {showComments && (
-        <CommentsModal post={post} user={user} onLike={onLike} onClose={() => setShowComments(false)} />
-      )}
-
-      {editing && (
-        <div onClick={() => setEditing(false)} style={overlayStyle}>
-          <div onClick={e => e.stopPropagation()} style={{ ...modalStyle, background: '#F4FAF0', padding: '20px 16px 24px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
-              <span style={{ fontWeight: 500, fontSize: 15, color: '#27500A' }}>Editar post</span>
-              <button onClick={() => setEditing(false)} style={{ background: 'none', border: 'none', fontSize: 18, cursor: 'pointer', color: '#888780' }}>✕</button>
-            </div>
-            {post.image_url && <img src={post.image_url} alt="" style={{ width: '100%', height: 160, objectFit: 'cover', borderRadius: 12, marginBottom: 12 }} />}
-            <textarea value={newCaption} onChange={e => setNewCaption(e.target.value)} rows={4} style={{ width: '100%', border: '0.5px solid #C5E4A7', borderRadius: 10, padding: 10, fontSize: 13, fontFamily: 'inherit', resize: 'none', outline: 'none', background: '#fff', marginBottom: 12 }} />
-            <div style={{ display: 'flex', gap: 8 }}>
-              <button onClick={() => setEditing(false)} style={{ flex: 1, background: '#fff', border: '0.5px solid #C5E4A7', borderRadius: 10, padding: '11px 0', fontSize: 13, cursor: 'pointer', color: '#888780', fontFamily: 'inherit' }}>Cancelar</button>
-              <button onClick={saveEdit} disabled={saving} style={{ flex: 1, background: '#3B6D11', border: 'none', borderRadius: 10, padding: '11px 0', fontSize: 13, fontWeight: 500, cursor: 'pointer', color: '#EAF3DE', fontFamily: 'inherit' }}>{saving ? 'Salvando...' : 'Salvar'}</button>
-            </div>
-          </div>
-        </div>
+      {showModal && (
+        <PostModal
+          post={post}
+          user={user}
+          onLike={onLike}
+          onClose={() => setShowModal(false)}
+          onDelete={onDelete}
+          onTagClick={onTagClick}
+        />
       )}
 
       <div style={{ background: '#fff', borderRadius: 16, border: '0.5px solid #E2F2D4', overflow: 'hidden', marginBottom: 2 }}>
+        {/* Header */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 14px' }}>
           <Avatar url={post.profiles?.avatar_url} name={post.profiles?.username} />
           <a href={`/perfil/${post.user_id}`} style={{ fontWeight: 500, fontSize: 14, color: '#1a1a1a', flex: 1, textDecoration: 'none' }} onMouseOver={e => e.target.style.color = '#3B6D11'} onMouseOut={e => e.target.style.color = '#1a1a1a'}>
@@ -335,17 +352,27 @@ export default function PostCard({ post, user, onLike, onDelete, onTagClick }) {
           </a>
           {isOwner && (
             <div style={{ display: 'flex', gap: 4 }}>
-              <button onClick={() => setEditing(true)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#B4B2A9', fontSize: 12, padding: '4px 8px', borderRadius: 8 }} onMouseOver={e => e.target.style.color = '#3B6D11'} onMouseOut={e => e.target.style.color = '#B4B2A9'}>editar</button>
-              <button onClick={deletePost} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#B4B2A9', fontSize: 12, padding: '4px 8px', borderRadius: 8 }} onMouseOver={e => e.target.style.color = '#993C1D'} onMouseOut={e => e.target.style.color = '#B4B2A9'}>excluir</button>
+              <button onClick={() => setShowModal(true)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#B4B2A9', fontSize: 12, padding: '4px 8px', borderRadius: 8 }} onMouseOver={e => e.target.style.color = '#3B6D11'} onMouseOut={e => e.target.style.color = '#B4B2A9'}>editar</button>
+              <button onClick={async () => {
+                if (!confirm('Tem certeza que quer excluir este post?')) return
+                await supabase.from('post_tags').delete().eq('post_id', post.id)
+                await supabase.from('post_likes').delete().eq('post_id', post.id)
+                await supabase.from('comments').delete().eq('post_id', post.id)
+                await supabase.from('posts').delete().eq('id', post.id)
+                if (onDelete) onDelete()
+              }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#B4B2A9', fontSize: 12, padding: '4px 8px', borderRadius: 8 }} onMouseOver={e => e.target.style.color = '#993C1D'} onMouseOut={e => e.target.style.color = '#B4B2A9'}>excluir</button>
             </div>
           )}
         </div>
+
+        {/* Mídia */}
         {post.video_url ? (
           <video src={post.video_url} controls playsInline style={{ width: '100%', maxHeight: 500, background: '#000', display: 'block' }} />
         ) : post.image_url ? (
-          <img src={post.image_url} alt="post" onClick={() => setShowComments(true)}
-            style={{ width: '100%', maxHeight: 500, objectFit: 'contain', background: '#F4FAF0', cursor: 'pointer', display: 'block' }} />
+          <img src={post.image_url} alt="post" onClick={() => setShowModal(true)} style={{ width: '100%', maxHeight: 500, objectFit: 'contain', background: '#F4FAF0', cursor: 'pointer', display: 'block' }} />
         ) : null}
+
+        {/* Ações + legenda + preview comentários */}
         <div style={{ padding: '12px 14px' }}>
           <Caption text={post.caption} onTagClick={onTagClick ?? (() => {})} />
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 10 }}>
@@ -353,11 +380,10 @@ export default function PostCard({ post, user, onLike, onDelete, onTagClick }) {
               <span style={{ fontSize: 18, color: liked ? '#3B6D11' : '#B4B2A9' }}>♥</span>
               <span style={{ fontSize: 13, color: '#888780' }}>{likeCount}</span>
             </button>
-            <button onClick={() => setShowComments(true)} style={{ background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5, padding: 0 }}>
+            <button onClick={() => setShowModal(true)} style={{ background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5, padding: 0 }}>
               <span style={{ fontSize: 16, color: '#B4B2A9' }}>💬</span>
               <span style={{ fontSize: 13, color: '#888780' }}>{totalComments > 0 ? `${totalComments} comentários` : 'comentar'}</span>
             </button>
-            {isOwner && likeCount > 0 && <button onClick={() => setShowLikes(true)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 12, color: '#3B6D11', padding: 0, textDecoration: 'underline' }}>ver quem curtiu</button>}
           </div>
           {previewComments.length > 0 && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6, borderTop: '0.5px solid #F0F7EC', paddingTop: 10 }}>
@@ -367,10 +393,10 @@ export default function PostCard({ post, user, onLike, onDelete, onTagClick }) {
                   <p style={{ fontSize: 13, color: '#333', lineHeight: 1.4, margin: 0, flex: 1 }}>
                     <a href={`/perfil/${c.user_id}`} style={{ fontWeight: 500, color: '#1a1a1a', textDecoration: 'none', marginRight: 4 }}>{c.profiles?.username ?? 'usuário'}</a>{c.body}
                   </p>
-                  {user && <button onClick={() => setShowComments(true)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 11, color: '#B4B2A9', padding: '0 4px', flexShrink: 0 }} onMouseOver={e => e.target.style.color = '#3B6D11'} onMouseOut={e => e.target.style.color = '#B4B2A9'}>responder</button>}
+                  {user && <button onClick={() => setShowModal(true)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 11, color: '#B4B2A9', padding: '0 4px', flexShrink: 0 }} onMouseOver={e => e.target.style.color = '#3B6D11'} onMouseOut={e => e.target.style.color = '#B4B2A9'}>responder</button>}
                 </div>
               ))}
-              {totalComments > 2 && <button onClick={() => setShowComments(true)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 12, color: '#888780', padding: 0, textAlign: 'left' }}>Ver todos os {totalComments} comentários</button>}
+              {totalComments > 2 && <button onClick={() => setShowModal(true)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 12, color: '#888780', padding: 0, textAlign: 'left' }}>Ver todos os {totalComments} comentários</button>}
             </div>
           )}
         </div>
