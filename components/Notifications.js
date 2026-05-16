@@ -90,7 +90,7 @@ export default function Notifications({ user }) {
             <div style={{ overflowY: 'auto', flex: 1, borderRadius: '0 0 20px 20px' }}>
               {notifications.length === 0 && <p style={{ textAlign: 'center', color: '#888', fontSize: 13, padding: 32 }}>{t.noNotifications}</p>}
               {notifications.map(n => (
-                <a key={n.id} href={getLink(n)} onClick={() => { markRead(n.id); setOpen(false) }} style={{ display: 'flex', alignItems: 'flex-start', gap: 12, padding: '12px 16px', borderBottom: '0.5px solid #F0F7EC', textDecoration: 'none', background: n.read ? '#fff' : '#F4FAF0' }}>
+                <a key={n.id} href={getLink(n)} onClick={async e => { e.preventDefault(); await markRead(n.id); setOpen(false); window.location.href = getLink(n) }} style={{ display: 'flex', alignItems: 'flex-start', gap: 12, padding: '12px 16px', borderBottom: '0.5px solid #F0F7EC', textDecoration: 'none', background: n.read ? '#fff' : '#F4FAF0' }}>
                   <div style={{ width: 36, height: 36, borderRadius: '50%', background: '#EAF3DE', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16, flexShrink: 0 }}>{getIcon(n.type)}</div>
                   <div style={{ flex: 1 }}>
                     <p style={{ fontSize: 13, color: '#1a1a1a', lineHeight: 1.4, margin: '0 0 3px' }}>{n.message}</p>
@@ -103,7 +103,7 @@ export default function Notifications({ user }) {
           </div>
         </div>
       )}
-      <button onClick={() => setOpen(true)} style={{ position: 'relative', background: 'none', border: 'none', cursor: 'pointer', padding: '4px', display: 'flex', alignItems: 'center' }}>
+      <button onClick={() => { setOpen(true); if (unread > 0) markAllRead() }} style={{ position: 'relative', background: 'none', border: 'none', cursor: 'pointer', padding: '4px', display: 'flex', alignItems: 'center' }}>
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
           <path d="M12 22c1.1 0 2-.9 2-2H10c0 1.1.9 2 2 2zm6-6V11c0-3.07-1.64-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5s-1.5.67-1.5 1.5v.68C7.63 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2z" fill={unread > 0 ? '#3B6D11' : '#B4B2A9'}/>
         </svg>
