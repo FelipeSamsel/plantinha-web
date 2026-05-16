@@ -46,6 +46,7 @@ export default function PerfilPage() {
   const [followers, setFollowers] = useState([])
   const [following, setFollowing] = useState([])
   const [selectedPost, setSelectedPost] = useState(null)
+  const [deletingAccount, setDeletingAccount] = useState(false)
   const fileRef = useRef(null)
 
   useEffect(() => { load() }, [])
@@ -125,6 +126,22 @@ export default function PerfilPage() {
     finally { setUploadingAvatar(false) }
   }
 
+  async function deleteAccount() {
+    const confirmed = window.confirm('Tem certeza? Esta ação é irreversível. Sua conta, posts e dados serão excluídos permanentemente.')
+    if (!confirmed) return
+    const double = window.confirm('Última confirmação: excluir minha conta definitivamente?')
+    if (!double) return
+    setDeletingAccount(true)
+    try {
+      await supabase.rpc('delete_own_account')
+      await supabase.auth.signOut()
+      window.location.href = '/'
+    } catch (e) {
+      alert('Erro ao excluir conta: ' + e.message)
+      setDeletingAccount(false)
+    }
+  }
+
   if (!user) return <p style={{ textAlign: 'center', marginTop: 60, color: '#888' }}>Faça login para ver seu jardim.</p>
 
   const initial = (profile?.username?.[0] ?? '?').toUpperCase()
@@ -171,7 +188,12 @@ export default function PerfilPage() {
           <>
             <p style={{ fontWeight: 500, fontSize: 18, color: '#1a1a1a', marginBottom: 4 }}>{profile?.username}</p>
             {profile?.bio && <p style={{ fontSize: 13, color: '#888780', marginBottom: 8 }}>{profile.bio}</p>}
-            <button onClick={() => setEditing(true)} style={{ background: 'transparent', color: '#3B6D11', border: '0.5px solid #C5E4A7', borderRadius: 20, padding: '5px 14px', fontSize: 12, cursor: 'pointer', marginBottom: 16 }}>editar perfil</button>
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'center', marginBottom: 16 }}>
+              <button onClick={() => setEditing(true)} style={{ background: 'transparent', color: '#3B6D11', border: '0.5px solid #C5E4A7', borderRadius: 20, padding: '5px 14px', fontSize: 12, cursor: 'pointer' }}>editar perfil</button>
+              <button onClick={deleteAccount} disabled={deletingAccount} style={{ background: 'transparent', color: '#993C1D', border: '0.5px solid #f5c4c4', borderRadius: 20, padding: '5px 14px', fontSize: 12, cursor: 'pointer' }}>
+                {deletingAccount ? 'excluindo...' : 'excluir conta'}
+              </button>
+            </div>
           </>
         )}
 
