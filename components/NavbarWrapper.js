@@ -236,6 +236,7 @@ export default function NavbarWrapper({ children }) {
             { href: '/', icon: '⊞', label: t.feed },
             { href: '/forum', icon: '💬', label: t.forum },
             ...(user ? [{ href: '/perfil', icon: '🪴', label: t.myGarden }] : []),
+            { href: '/feedback', icon: '💡', label: 'Feedback' },
           ].map(({ href, icon, label }) => (
             <Link key={href} href={href} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '11px 14px', borderRadius: 12, fontSize: 15, color: '#27500A', fontWeight: 500, transition: 'background 0.15s' }}
               onMouseOver={e => e.currentTarget.style.background = '#EAF3DE'}
@@ -286,6 +287,7 @@ export default function NavbarWrapper({ children }) {
                 { href: '/', icon: '⊞', label: t.feed },
                 { href: '/forum', icon: '💬', label: t.forum },
                 ...(user ? [{ href: '/perfil', icon: '🪴', label: t.myGarden }] : []),
+                { href: '/feedback', icon: '💡', label: 'Feedback' },
               ].map(({ href, icon, label }) => (
                 <Link key={href} href={href} onClick={() => setMenuOpen(false)} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '11px 14px', borderRadius: 12, fontSize: 15, color: '#27500A', fontWeight: 500 }}>
                   <span>{icon}</span>{label}

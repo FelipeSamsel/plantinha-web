@@ -35,6 +35,8 @@ export default function DashboardPage() {
   const [deletingUser, setDeletingUser] = useState(null)
   const [userSearch, setUserSearch] = useState('')
   const [currentUserId, setCurrentUserId] = useState(null)
+  const [feedbackList, setFeedbackList] = useState([])
+  const [feedbackFilter, setFeedbackFilter] = useState('todos')
 
   useEffect(() => { checkAndLoad() }, [])
 
@@ -49,6 +51,7 @@ export default function DashboardPage() {
     setAllowed(true)
     await loadStats()
     await loadAllUsers()
+    await loadFeedback()
   }
 
   async function loadStats() {
@@ -156,6 +159,24 @@ export default function DashboardPage() {
     setDeletingUser(null)
   }
 
+  async function loadFeedback() {
+    const { data } = await supabase
+      .from('feedback')
+      .select('*, profiles(username, avatar_url)')
+      .order('created_at', { ascending: false })
+    if (data) setFeedbackList(data)
+  }
+
+  async function markFeedback(id, status) {
+    await supabase.from('feedback').update({ status }).eq('id', id)
+    setFeedbackList(prev => prev.map(f => f.id === id ? { ...f, status } : f))
+  }
+
+  async function deleteFeedback(id) {
+    await supabase.from('feedback').delete().eq('id', id)
+    setFeedbackList(prev => prev.filter(f => f.id !== id))
+  }
+
   if (allowed === null) return (
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '60vh' }}>
       <p style={{ color: '#B4B2A9', fontSize: 14 }}>Verificando acesso...</p>
@@ -197,7 +218,7 @@ export default function DashboardPage() {
 
       {/* Abas */}
       <div style={{ display: 'flex', gap: 4, marginBottom: 24, borderBottom: '1px solid #E2F2D4' }}>
-        {[{ key: 'stats', label: '📊 Estatísticas' }, { key: 'users', label: '👥 Usuários' }].map(({ key, label }) => (
+        {[{ key: 'stats', label: '📊 Estatísticas' }, { key: 'users', label: '👥 Usuários' }, { key: 'feedback', label: '💬 Feedback' }].map(({ key, label }) => (
           <button key={key} onClick={() => setTab(key)} style={{
             padding: '9px 18px', background: 'none', border: 'none', cursor: 'pointer',
             fontSize: 13, fontWeight: 500,
@@ -254,6 +275,72 @@ export default function DashboardPage() {
             })}
           </div>
           <p style={{ fontSize: 12, color: '#B4B2A9', textAlign: 'center', marginTop: 12 }}>{filteredUsers.length} usuário{filteredUsers.length !== 1 ? 's' : ''}</p>
+        </div>
+      )}
+
+      {/* Aba Feedback */}
+      {tab === 'feedback' && (
+        <div>
+          {/* Filtros */}
+          <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
+            {['todos', 'novo', 'visto', 'resolvido'].map(f => (
+              <button key={f} onClick={() => setFeedbackFilter(f)} style={{
+                padding: '5px 14px', borderRadius: 20, fontSize: 12, cursor: 'pointer',
+                border: '0.5px solid #C5E4A7',
+                background: feedbackFilter === f ? '#3B6D11' : '#fff',
+                color: feedbackFilter === f ? '#EAF3DE' : '#888780',
+                fontWeight: feedbackFilter === f ? 500 : 400
+              }}>{f}</button>
+            ))}
+            <button onClick={loadFeedback} style={{ marginLeft: 'auto', background: '#EAF3DE', border: 'none', borderRadius: 20, padding: '5px 14px', fontSize: 12, color: '#3B6D11', cursor: 'pointer' }}>↻ Atualizar</button>
+          </div>
+
+          {/* Lista */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {feedbackList
+              .filter(f => feedbackFilter === 'todos' || f.status === feedbackFilter)
+              .map(fb => {
+                const statusColor = fb.status === 'novo' ? '#993C1D' : fb.status === 'visto' ? '#854F0B' : '#27500A'
+                const statusBg = fb.status === 'novo' ? '#FEF2F0' : fb.status === 'visto' ? '#FAEEDA' : '#EAF3DE'
+                return (
+                  <div key={fb.id} style={{ background: '#fff', borderRadius: 14, border: '0.5px solid #E2F2D4', padding: 16 }}>
+                    <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, marginBottom: 10 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                        <span style={{ fontSize: 18 }}>{fb.type === 'bug' ? '🐛' : '💡'}</span>
+                        <div>
+                          <p style={{ fontSize: 13, fontWeight: 600, color: '#1a1a1a', margin: 0 }}>
+                            {fb.type === 'bug' ? 'Bug' : 'Sugestão'}
+                          </p>
+                          <p style={{ fontSize: 11, color: '#B4B2A9', margin: '2px 0 0' }}>
+                            {fb.profiles?.username ? `@${fb.profiles.username}` : 'visitante'} · {timeAgo(fb.created_at)}
+                          </p>
+                        </div>
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+                        <span style={{ background: statusBg, color: statusColor, fontSize: 10, fontWeight: 600, padding: '3px 9px', borderRadius: 20 }}>{fb.status}</span>
+                        <button onClick={() => deleteFeedback(fb.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#B4B2A9', fontSize: 12, padding: '2px 6px' }}
+                          onMouseOver={e => e.target.style.color = '#993C1D'} onMouseOut={e => e.target.style.color = '#B4B2A9'}>✕</button>
+                      </div>
+                    </div>
+                    <p style={{ fontSize: 13, color: '#333', lineHeight: 1.6, margin: '0 0 12px', background: '#F4FAF0', padding: '10px 12px', borderRadius: 10 }}>{fb.message}</p>
+                    <div style={{ display: 'flex', gap: 6 }}>
+                      {['novo', 'visto', 'resolvido'].map(s => (
+                        <button key={s} onClick={() => markFeedback(fb.id, s)} style={{
+                          padding: '5px 12px', borderRadius: 20, fontSize: 11, cursor: 'pointer',
+                          border: '0.5px solid #C5E4A7',
+                          background: fb.status === s ? '#3B6D11' : '#fff',
+                          color: fb.status === s ? '#EAF3DE' : '#888780',
+                          fontWeight: fb.status === s ? 600 : 400
+                        }}>{s}</button>
+                      ))}
+                    </div>
+                  </div>
+                )
+              })}
+            {feedbackList.filter(f => feedbackFilter === 'todos' || f.status === feedbackFilter).length === 0 && (
+              <p style={{ textAlign: 'center', color: '#B4B2A9', padding: 40, fontSize: 13 }}>Nenhum feedback {feedbackFilter !== 'todos' ? `"${feedbackFilter}"` : ''} ainda 🌱</p>
+            )}
+          </div>
         </div>
       )}
 
