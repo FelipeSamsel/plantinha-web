@@ -324,7 +324,7 @@ export default function DashboardPage() {
                             {fb.type === 'bug' ? 'Bug' : 'Sugestão'}
                           </p>
                           <p style={{ fontSize: 11, color: '#B4B2A9', margin: '2px 0 0' }}>
-                            {fb.profile?.username ? `@${fb.profiles.username}` : 'visitante'} · {timeAgo(fb.created_at)}
+                            {fb.profile?.username ? `@${fb.profile.username}` : 'visitante'} · {timeAgo(fb.created_at)}
                           </p>
                         </div>
                       </div>
