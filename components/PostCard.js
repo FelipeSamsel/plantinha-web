@@ -112,8 +112,6 @@ function PostModal({ post: initialPost, user, onLike, onClose, onDelete, onTagCl
   const liked = user && post.post_likes?.some(l => l.user_id === user.id)
   const likeCount = post.post_likes?.length ?? 0
   const isOwner = user && user.id === post.user_id
-  const isMobile = typeof window !== 'undefined' && window.innerWidth < 768
-
   useEffect(() => { loadComments() }, [])
 
   async function loadComments() {
@@ -219,17 +217,17 @@ function PostModal({ post: initialPost, user, onLike, onClose, onDelete, onTagCl
 
       {/* Modal principal */}
       <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: 20 }}>
-        <div onClick={e => e.stopPropagation()} style={{
-          display: 'flex', flexDirection: isMobile ? 'column' : 'row',
+        <div onClick={e => e.stopPropagation()} className="post-modal-inner" style={{
+          display: 'flex', flexDirection: 'row',
           borderRadius: 20, overflow: 'hidden',
-          width: '100%', maxWidth: isMobile ? 420 : 900,
+          width: '100%', maxWidth: 900,
           maxHeight: '90vh',
           boxShadow: '0 8px 40px rgba(0,0,0,0.4)'
         }}>
 
-          {/* Coluna esquerda — mídia */}
-          {!isMobile && (post.image_url || post.video_url) && (
-            <div style={{ flex: 1, background: '#000', display: 'flex', alignItems: 'center', justifyContent: 'center', minWidth: 0 }}>
+          {/* Coluna esquerda — mídia (some no mobile via CSS) */}
+          {(post.image_url || post.video_url) && (
+            <div className="post-modal-media" style={{ flex: 1, background: '#000', display: 'flex', alignItems: 'center', justifyContent: 'center', minWidth: 0 }}>
               {post.video_url
                 ? <video src={post.video_url} controls playsInline style={{ width: '100%', maxHeight: '90vh' }} />
                 : <img src={post.image_url} alt="post" style={{ width: '100%', height: '100%', objectFit: 'contain', maxHeight: '90vh' }} />
@@ -238,7 +236,7 @@ function PostModal({ post: initialPost, user, onLike, onClose, onDelete, onTagCl
           )}
 
           {/* Coluna direita — info + comentários */}
-          <div style={{ width: isMobile ? '100%' : 360, background: '#fff', display: 'flex', flexDirection: 'column', flexShrink: 0, maxHeight: isMobile ? '90vh' : 'auto' }}>
+          <div className="post-modal-panel" style={{ width: 360, background: '#fff', display: 'flex', flexDirection: 'column', flexShrink: 0, maxHeight: '90vh' }}>
 
             {/* Header: avatar + username + editar/excluir + fechar */}
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', borderBottom: '0.5px solid #E2F2D4', flexShrink: 0, gap: 8 }}>
@@ -259,9 +257,9 @@ function PostModal({ post: initialPost, user, onLike, onClose, onDelete, onTagCl
               </div>
             </div>
 
-            {/* Mídia mobile */}
-            {isMobile && (post.image_url || post.video_url) && (
-              <div style={{ background: '#000', flexShrink: 0 }}>
+            {/* Mídia mobile — aparece só no mobile via CSS */}
+            {(post.image_url || post.video_url) && (
+              <div className="post-modal-media-mobile" style={{ background: '#000', flexShrink: 0, display: 'none' }}>
                 {post.video_url
                   ? <video src={post.video_url} controls playsInline style={{ width: '100%', maxHeight: 260, display: 'block' }} />
                   : <img src={post.image_url} alt="post" style={{ width: '100%', maxHeight: 260, objectFit: 'contain', display: 'block' }} />
@@ -316,11 +314,33 @@ function PostModal({ post: initialPost, user, onLike, onClose, onDelete, onTagCl
           </div>
         </div>
       </div>
+      <style>{postModalCSS}</style>
     </>
   )
 }
 
 export { PostModal as CommentsModal }
+
+const postModalCSS = `
+  @media (max-width: 768px) {
+    .post-modal-inner {
+      flex-direction: column !important;
+      max-width: 100% !important;
+      border-radius: 20px 20px 0 0 !important;
+      position: fixed !important;
+      bottom: 0 !important;
+      left: 0 !important;
+      right: 0 !important;
+      max-height: 92vh !important;
+    }
+    .post-modal-media { display: none !important; }
+    .post-modal-media-mobile { display: block !important; }
+    .post-modal-panel {
+      width: 100% !important;
+      max-height: 92vh !important;
+    }
+  }
+`
 
 export default function PostCard({ post, user, onLike, onDelete, onTagClick }) {
   const [showModal, setShowModal] = useState(false)
