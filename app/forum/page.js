@@ -4,6 +4,7 @@ import { supabase } from '../../lib/supabase'
 import { useT } from '../../lib/i18n'
 
 const CATS = [null, 'ajuda', 'identificar', 'dica', 'onde_comprar']
+const MAX_VIDEO_SECONDS = 60
 const BADGE = {
   ajuda: ['#FEF2F0', '#993C1D'],
   identificar: ['#E6F1FB', '#185FA5'],
@@ -45,7 +46,6 @@ function ReplyItem({ reply, user, t, onDelete, replyingTo, setReplyingTo, replyT
   const isOwner = user && user.id === reply.user_id
   const isReplying = replyingTo === reply.id
   const indent = Math.min(depth, 4) * 20
-
   return (
     <div style={{ marginLeft: indent }}>
       <div style={{ display: 'flex', gap: 10, padding: '10px 20px 4px', alignItems: 'flex-start' }}>
@@ -98,9 +98,13 @@ export default function ForumPage() {
   const [category, setCategory] = useState(null)
   const [loading, setLoading] = useState(false)
   const [showForm, setShowForm] = useState(false)
+  // mídia do tópico
   const [imageFile, setImageFile] = useState(null)
   const [imagePreview, setImagePreview] = useState(null)
+  const [videoFile, setVideoFile] = useState(null)
+  const [videoPreview, setVideoPreview] = useState(null)
   const fileInputRef = useRef(null)
+  const videoInputRef = useRef(null)
 
   // modal do tópico
   const [selectedPost, setSelectedPost] = useState(null)
@@ -140,8 +144,35 @@ export default function ForumPage() {
   function handleImageChange(e) {
     const file = e.target.files?.[0]
     if (!file) return
+    // limpa vídeo se havia
+    setVideoFile(null); setVideoPreview(null)
     setImageFile(file)
     setImagePreview(URL.createObjectURL(file))
+  }
+
+  function handleVideoChange(e) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    const url = URL.createObjectURL(file)
+    const vid = document.createElement('video')
+    vid.preload = 'metadata'
+    vid.src = url
+    vid.onloadedmetadata = () => {
+      if (vid.duration > MAX_VIDEO_SECONDS) {
+        alert(`O vídeo tem ${Math.round(vid.duration)}s. O limite é 1 minuto (60s).\n\nDica: corte o vídeo no seu celular ou em um editor antes de enviar.`)
+        return
+      }
+      // limpa imagem se havia
+      setImageFile(null); setImagePreview(null)
+      setVideoFile(file)
+      setVideoPreview(url)
+    }
+    vid.onerror = () => alert('Não foi possível ler o vídeo. Tente outro formato.')
+  }
+
+  function clearMedia() {
+    setImageFile(null); setImagePreview(null)
+    setVideoFile(null); setVideoPreview(null)
   }
 
   function openEdit() {
@@ -154,16 +185,10 @@ export default function ForumPage() {
   async function saveEdit() {
     if (!editTitle.trim() || !editCategory) return alert(t.chooseCategoryAndTitle)
     setSaving(true)
-    await supabase.from('forum_posts').update({
-      title: editTitle.trim(),
-      body: editBody.trim(),
-      category: editCategory,
-    }).eq('id', selectedPost.id)
-    // atualiza o post selecionado localmente
+    await supabase.from('forum_posts').update({ title: editTitle.trim(), body: editBody.trim(), category: editCategory }).eq('id', selectedPost.id)
     const updated = { ...selectedPost, title: editTitle.trim(), body: editBody.trim(), category: editCategory }
     setSelectedPost(updated)
-    setSaving(false)
-    setEditing(false)
+    setSaving(false); setEditing(false)
     load()
   }
 
@@ -171,6 +196,8 @@ export default function ForumPage() {
     if (!title || !category) return alert(t.chooseCategoryAndTitle)
     setLoading(true)
     let image_url = null
+    let video_url = null
+
     if (imageFile) {
       const ext = imageFile.name.split('.').pop()
       const path = `forum/${user.id}_${Date.now()}.${ext}`
@@ -180,10 +207,52 @@ export default function ForumPage() {
         image_url = urlData.publicUrl
       }
     }
-    await supabase.from('forum_posts').insert({ user_id: user.id, title, body, category, image_url })
-    setTitle(''); setBody(''); setCategory(null); setShowForm(false); setImageFile(null); setImagePreview(null)
+
+    if (videoFile) {
+      const ext = videoFile.name.split('.').pop() || 'mp4'
+      const path = `forum/videos/${user.id}_${Date.now()}.${ext}`
+      const { error } = await supabase.storage.from('post-images').upload(path, videoFile, { contentType: videoFile.type || 'video/mp4' })
+      if (!error) {
+        const { data: urlData } = supabase.storage.from('post-images').getPublicUrl(path)
+        video_url = urlData.publicUrl
+        // captura thumbnail do vídeo
+        try {
+          const thumbBlob = await captureThumb(videoPreview)
+          if (thumbBlob) {
+            const thumbPath = `forum/thumbs/${user.id}_${Date.now()}.jpg`
+            const { error: te } = await supabase.storage.from('post-images').upload(thumbPath, thumbBlob, { contentType: 'image/jpeg' })
+            if (!te) {
+              const { data: td } = supabase.storage.from('post-images').getPublicUrl(thumbPath)
+              image_url = td.publicUrl
+            }
+          }
+        } catch {}
+      }
+    }
+
+    await supabase.from('forum_posts').insert({ user_id: user.id, title, body, category, image_url, video_url })
+    setTitle(''); setBody(''); setCategory(null); setShowForm(false); clearMedia()
     load()
     setLoading(false)
+  }
+
+  async function captureThumb(videoUrl) {
+    return new Promise(resolve => {
+      try {
+        const vid = document.createElement('video')
+        vid.src = videoUrl; vid.crossOrigin = 'anonymous'; vid.muted = true; vid.preload = 'metadata'
+        vid.onloadedmetadata = () => { vid.currentTime = Math.min(vid.duration * 0.33, vid.duration - 0.1) }
+        vid.onseeked = () => {
+          try {
+            const canvas = document.createElement('canvas')
+            canvas.width = vid.videoWidth || 640; canvas.height = vid.videoHeight || 360
+            canvas.getContext('2d').drawImage(vid, 0, 0, canvas.width, canvas.height)
+            canvas.toBlob(blob => resolve(blob), 'image/jpeg', 0.85)
+          } catch { resolve(null) }
+        }
+        vid.onerror = () => resolve(null)
+      } catch { resolve(null) }
+    })
   }
 
   async function sendReply() {
@@ -194,9 +263,7 @@ export default function ForumPage() {
       const { data: profile } = await supabase.from('profiles').select('username').eq('id', user.id).single()
       await supabase.from('notifications').insert({ user_id: selectedPost.user_id, from_user_id: user.id, type: 'forum_reply', forum_post_id: selectedPost.id, message: t.replied(profile?.username ?? '...', selectedPost.title.slice(0, 50)) })
     }
-    setNewReply('')
-    await loadReplies(selectedPost.id)
-    load()
+    setNewReply(''); await loadReplies(selectedPost.id); load()
     setLoadingReply(false)
   }
 
@@ -209,9 +276,7 @@ export default function ForumPage() {
       const { data: profile } = await supabase.from('profiles').select('username').eq('id', user.id).single()
       await supabase.from('notifications').insert({ user_id: parentReply.user_id, from_user_id: user.id, type: 'forum_reply', forum_post_id: selectedPost.id, message: t.repliedComment(profile?.username ?? '...', selectedPost.title.slice(0, 40)) })
     }
-    setReplyText(''); setReplyingTo(null)
-    await loadReplies(selectedPost.id)
-    load()
+    setReplyText(''); setReplyingTo(null); await loadReplies(selectedPost.id); load()
     setLoadingSubReply(false)
   }
 
@@ -224,8 +289,7 @@ export default function ForumPage() {
     if (!confirm(t.deletePostConfirm)) return
     await supabase.from('forum_replies').delete().eq('forum_post_id', postId)
     await supabase.from('forum_posts').delete().eq('id', postId)
-    setSelectedPost(null)
-    load()
+    setSelectedPost(null); load()
   }
 
   const replyTree = buildTree(replies)
@@ -240,10 +304,13 @@ export default function ForumPage() {
           style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: 20 }}>
           <div onClick={e => e.stopPropagation()} style={{ background: '#fff', borderRadius: 20, width: '100%', maxWidth: 860, maxHeight: '90vh', display: 'flex', flexDirection: 'row', overflow: 'hidden', boxShadow: '0 12px 48px rgba(0,0,0,0.2)' }} className="forum-modal-inner">
 
-            {/* Imagem lateral */}
-            {selectedPost.image_url && (
+            {/* Mídia lateral desktop */}
+            {(selectedPost.image_url || selectedPost.video_url) && (
               <div style={{ flex: '0 0 420px', background: '#0a0a0a', display: 'flex', alignItems: 'center', justifyContent: 'center' }} className="forum-modal-img-col">
-                <img src={selectedPost.image_url} alt="" style={{ width: '100%', height: '100%', objectFit: 'contain', maxHeight: '90vh' }} />
+                {selectedPost.video_url
+                  ? <video src={selectedPost.video_url} controls playsInline style={{ width: '100%', maxHeight: '90vh' }} />
+                  : <img src={selectedPost.image_url} alt="" style={{ width: '100%', height: '100%', objectFit: 'contain', maxHeight: '90vh' }} />
+                }
               </div>
             )}
 
@@ -265,8 +332,6 @@ export default function ForumPage() {
                       <span style={{ fontSize: 12, color: '#B4B2A9' }}>{t.by} {selectedPost.profiles?.username}</span>
                     </div>
                   )}
-
-                  {/* Formulário de edição inline */}
                   {editing && (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
@@ -274,43 +339,24 @@ export default function ForumPage() {
                           <button key={c} onClick={() => setEditCategory(c)} style={{ padding: '4px 12px', borderRadius: 20, fontSize: 11, cursor: 'pointer', border: '0.5px solid #C5E4A7', background: editCategory === c ? '#EAF3DE' : '#fff', color: editCategory === c ? '#3B6D11' : '#888780', fontWeight: editCategory === c ? 600 : 400 }}>{c}</button>
                         ))}
                       </div>
-                      <input
-                        value={editTitle}
-                        onChange={e => setEditTitle(e.target.value)}
-                        placeholder={t.yourQuestion}
-                        style={{ border: '1px solid #D6ECC4', borderRadius: 10, padding: '8px 12px', fontSize: 13, outline: 'none', fontFamily: 'inherit', background: '#F4FAF0', color: '#27500A' }}
-                      />
-                      <textarea
-                        value={editBody}
-                        onChange={e => setEditBody(e.target.value)}
-                        placeholder={t.moreDetails}
-                        rows={3}
-                        style={{ border: '1px solid #D6ECC4', borderRadius: 10, padding: '8px 12px', fontSize: 13, outline: 'none', fontFamily: 'inherit', background: '#F4FAF0', color: '#27500A', resize: 'none' }}
-                      />
+                      <input value={editTitle} onChange={e => setEditTitle(e.target.value)} placeholder={t.yourQuestion}
+                        style={{ border: '1px solid #D6ECC4', borderRadius: 10, padding: '8px 12px', fontSize: 13, outline: 'none', fontFamily: 'inherit', background: '#F4FAF0', color: '#27500A' }} />
+                      <textarea value={editBody} onChange={e => setEditBody(e.target.value)} placeholder={t.moreDetails} rows={3}
+                        style={{ border: '1px solid #D6ECC4', borderRadius: 10, padding: '8px 12px', fontSize: 13, outline: 'none', fontFamily: 'inherit', background: '#F4FAF0', color: '#27500A', resize: 'none' }} />
                       <div style={{ display: 'flex', gap: 8 }}>
-                        <button onClick={() => setEditing(false)} style={{ flex: 1, background: '#fff', border: '0.5px solid #C5E4A7', borderRadius: 10, padding: '8px 0', fontSize: 12, cursor: 'pointer', color: '#888780', fontFamily: 'inherit' }}>
-                          {t.cancel}
-                        </button>
-                        <button onClick={saveEdit} disabled={saving} style={{ flex: 2, background: '#3B6D11', border: 'none', borderRadius: 10, padding: '8px 0', fontSize: 12, fontWeight: 600, cursor: 'pointer', color: '#EAF3DE', fontFamily: 'inherit' }}>
-                          {saving ? '...' : 'Salvar'}
-                        </button>
+                        <button onClick={() => setEditing(false)} style={{ flex: 1, background: '#fff', border: '0.5px solid #C5E4A7', borderRadius: 10, padding: '8px 0', fontSize: 12, cursor: 'pointer', color: '#888780', fontFamily: 'inherit' }}>{t.cancel}</button>
+                        <button onClick={saveEdit} disabled={saving} style={{ flex: 2, background: '#3B6D11', border: 'none', borderRadius: 10, padding: '8px 0', fontSize: 12, fontWeight: 600, cursor: 'pointer', color: '#EAF3DE', fontFamily: 'inherit' }}>{saving ? '...' : 'Salvar'}</button>
                       </div>
                     </div>
                   )}
                 </div>
-
-                {/* Botões editar/excluir/fechar */}
                 <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
                   {isPostOwner && !editing && (
                     <>
                       <button onClick={openEdit} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#B4B2A9', fontSize: 12, padding: '4px 8px', borderRadius: 8 }}
-                        onMouseOver={e => e.target.style.color = '#3B6D11'} onMouseOut={e => e.target.style.color = '#B4B2A9'}>
-                        editar
-                      </button>
+                        onMouseOver={e => e.target.style.color = '#3B6D11'} onMouseOut={e => e.target.style.color = '#B4B2A9'}>editar</button>
                       <button onClick={() => deleteForumPost(selectedPost.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#B4B2A9', fontSize: 12, padding: '4px 8px', borderRadius: 8 }}
-                        onMouseOver={e => e.target.style.color = '#993C1D'} onMouseOut={e => e.target.style.color = '#B4B2A9'}>
-                        {t.delete}
-                      </button>
+                        onMouseOver={e => e.target.style.color = '#993C1D'} onMouseOut={e => e.target.style.color = '#B4B2A9'}>{t.delete}</button>
                     </>
                   )}
                   <button onClick={() => { setSelectedPost(null); setReplyingTo(null); setReplyText(''); setEditing(false) }}
@@ -318,15 +364,18 @@ export default function ForumPage() {
                 </div>
               </div>
 
-              {/* Imagem mobile */}
-              {selectedPost.image_url && (
+              {/* Mídia mobile */}
+              {(selectedPost.image_url || selectedPost.video_url) && (
                 <div style={{ display: 'none' }} className="forum-modal-img-mobile">
-                  <img src={selectedPost.image_url} alt="" style={{ width: '100%', maxHeight: 220, objectFit: 'cover' }} />
+                  {selectedPost.video_url
+                    ? <video src={selectedPost.video_url} controls playsInline style={{ width: '100%', maxHeight: 220, display: 'block', background: '#000' }} />
+                    : <img src={selectedPost.image_url} alt="" style={{ width: '100%', maxHeight: 220, objectFit: 'cover' }} />
+                  }
                 </div>
               )}
 
               {/* Respostas */}
-              <div style={{ flex: 1, overflowY: 'auto', padding: '8px 0', position: 'relative' }}>
+              <div style={{ flex: 1, overflowY: 'auto', padding: '8px 0' }}>
                 {replyTree.length === 0 && <p style={{ textAlign: 'center', color: '#888', fontSize: 13, padding: 32 }}>{t.noRepliesYet}</p>}
                 {replyTree.map(reply => (
                   <ReplyItem key={reply.id} reply={reply} user={user} t={t} onDelete={deleteReply} replyingTo={replyingTo} setReplyingTo={setReplyingTo} replyText={replyText} setReplyText={setReplyText} sendSubReply={sendSubReply} loadingSubReply={loadingSubReply} depth={0} />
@@ -364,21 +413,45 @@ export default function ForumPage() {
               <button key={c} onClick={() => setCategory(c)} style={{ padding: '6px 14px', borderRadius: 20, fontSize: 12, cursor: 'pointer', border: '0.5px solid #C5E4A7', background: category === c ? '#EAF3DE' : '#fff', color: category === c ? '#3B6D11' : '#888780', fontWeight: category === c ? 500 : 400 }}>{c}</button>
             ))}
           </div>
-          <input value={title} onChange={e => setTitle(e.target.value)} placeholder={t.yourQuestion} style={{ width: '100%', border: '0.5px solid #C5E4A7', borderRadius: 10, padding: 10, fontSize: 13, marginBottom: 10, outline: 'none', fontFamily: 'inherit', boxSizing: 'border-box' }} />
-          <textarea value={body} onChange={e => setBody(e.target.value)} placeholder={t.moreDetails} rows={3} style={{ width: '100%', border: '0.5px solid #C5E4A7', borderRadius: 10, padding: 10, fontSize: 13, fontFamily: 'inherit', resize: 'none', marginBottom: 12, outline: 'none', boxSizing: 'border-box' }} />
+          <input value={title} onChange={e => setTitle(e.target.value)} placeholder={t.yourQuestion}
+            style={{ width: '100%', border: '0.5px solid #C5E4A7', borderRadius: 10, padding: 10, fontSize: 13, marginBottom: 10, outline: 'none', fontFamily: 'inherit', boxSizing: 'border-box' }} />
+          <textarea value={body} onChange={e => setBody(e.target.value)} placeholder={t.moreDetails} rows={3}
+            style={{ width: '100%', border: '0.5px solid #C5E4A7', borderRadius: 10, padding: 10, fontSize: 13, fontFamily: 'inherit', resize: 'none', marginBottom: 12, outline: 'none', boxSizing: 'border-box' }} />
+
+          {/* Mídia: imagem ou vídeo */}
           <div style={{ marginBottom: 12 }}>
             <input ref={fileInputRef} type="file" accept="image/*" onChange={handleImageChange} style={{ display: 'none' }} />
-            {imagePreview ? (
-              <div style={{ position: 'relative' }}>
+            <input ref={videoInputRef} type="file" accept="video/*" onChange={handleVideoChange} style={{ display: 'none' }} />
+
+            {/* Preview imagem */}
+            {imagePreview && (
+              <div style={{ position: 'relative', marginBottom: 8 }}>
                 <img src={imagePreview} alt="" style={{ width: '100%', maxHeight: 200, objectFit: 'cover', borderRadius: 10, display: 'block' }} />
-                <button onClick={() => { setImageFile(null); setImagePreview(null) }} style={{ position: 'absolute', top: 8, right: 8, background: 'rgba(0,0,0,0.55)', border: 'none', borderRadius: '50%', width: 28, height: 28, color: '#fff', cursor: 'pointer', fontSize: 14, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>✕</button>
+                <button onClick={clearMedia} style={{ position: 'absolute', top: 8, right: 8, background: 'rgba(0,0,0,0.55)', border: 'none', borderRadius: '50%', width: 28, height: 28, color: '#fff', cursor: 'pointer', fontSize: 14, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>✕</button>
               </div>
-            ) : (
-              <button onClick={() => fileInputRef.current?.click()} style={{ display: 'flex', alignItems: 'center', gap: 8, border: '1px dashed #C5E4A7', borderRadius: 10, padding: '10px 16px', background: '#F4FAF0', cursor: 'pointer', color: '#888780', fontSize: 13, width: '100%', justifyContent: 'center' }}>
-                {t.addImage}
-              </button>
+            )}
+
+            {/* Preview vídeo */}
+            {videoPreview && (
+              <div style={{ position: 'relative', marginBottom: 8 }}>
+                <video src={videoPreview} controls playsInline style={{ width: '100%', maxHeight: 200, borderRadius: 10, background: '#000', display: 'block' }} />
+                <button onClick={clearMedia} style={{ position: 'absolute', top: 8, right: 8, background: 'rgba(0,0,0,0.55)', border: 'none', borderRadius: '50%', width: 28, height: 28, color: '#fff', cursor: 'pointer', fontSize: 14, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>✕</button>
+              </div>
+            )}
+
+            {/* Botões de mídia (só aparece se não há preview) */}
+            {!imagePreview && !videoPreview && (
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button onClick={() => fileInputRef.current?.click()} style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, border: '1px dashed #C5E4A7', borderRadius: 10, padding: '10px 0', background: '#F4FAF0', cursor: 'pointer', color: '#888780', fontSize: 13 }}>
+                  🖼️ {t.addImage}
+                </button>
+                <button onClick={() => videoInputRef.current?.click()} style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, border: '1px dashed #C5E4A7', borderRadius: 10, padding: '10px 0', background: '#F4FAF0', cursor: 'pointer', color: '#888780', fontSize: 13 }}>
+                  🎥 Vídeo <span style={{ fontSize: 10, color: '#B4B2A9' }}>(máx. 1min)</span>
+                </button>
+              </div>
             )}
           </div>
+
           <button onClick={publish} disabled={loading} style={{ background: '#3B6D11', color: '#EAF3DE', border: 'none', borderRadius: 10, padding: '10px 24px', fontSize: 14, fontWeight: 500, cursor: 'pointer', width: '100%' }}>
             {loading ? t.sendingQuestion : t.sendQuestion}
           </button>
@@ -404,7 +477,18 @@ export default function ForumPage() {
               style={{ background: '#fff', borderRadius: 14, border: '0.5px solid #E2F2D4', overflow: 'hidden', cursor: 'pointer', transition: 'box-shadow 0.15s' }}
               onMouseOver={e => e.currentTarget.style.boxShadow = '0 2px 12px rgba(0,0,0,0.07)'}
               onMouseOut={e => e.currentTarget.style.boxShadow = 'none'}>
-              {post.image_url && <img src={post.image_url} alt="" style={{ width: '100%', height: 140, objectFit: 'cover', display: 'block' }} />}
+
+              {/* Thumbnail de imagem ou vídeo no card */}
+              {post.video_url && post.image_url && (
+                <div style={{ position: 'relative' }}>
+                  <img src={post.image_url} alt="" style={{ width: '100%', height: 140, objectFit: 'cover', display: 'block' }} />
+                  <div style={{ position: 'absolute', top: 8, left: 8, background: 'rgba(0,0,0,0.55)', borderRadius: 6, padding: '2px 8px', fontSize: 11, color: '#fff' }}>▶ vídeo</div>
+                </div>
+              )}
+              {post.image_url && !post.video_url && (
+                <img src={post.image_url} alt="" style={{ width: '100%', height: 140, objectFit: 'cover', display: 'block' }} />
+              )}
+
               <div style={{ padding: 16 }}>
                 <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 8 }}>
                   <span style={{ background: bg, color: fg, fontSize: 10, fontWeight: 500, padding: '3px 9px', borderRadius: 20 }}>{post.category}</span>
