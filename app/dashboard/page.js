@@ -162,9 +162,21 @@ export default function DashboardPage() {
   async function loadFeedback() {
     const { data } = await supabase
       .from('feedback')
-      .select('*, profiles(username, avatar_url)')
+      .select('*')
       .order('created_at', { ascending: false })
-    if (data) setFeedbackList(data)
+    if (!data) return
+
+    // busca usernames separado
+    const userIds = [...new Set(data.filter(f => f.user_id).map(f => f.user_id))]
+    let profileMap = {}
+    if (userIds.length > 0) {
+      const { data: profiles } = await supabase
+        .from('profiles')
+        .select('id, username, avatar_url')
+        .in('id', userIds)
+      ;(profiles ?? []).forEach(p => { profileMap[p.id] = p })
+    }
+    setFeedbackList(data.map(f => ({ ...f, profile: profileMap[f.user_id] ?? null })))
   }
 
   async function markFeedback(id, status) {
@@ -312,7 +324,7 @@ export default function DashboardPage() {
                             {fb.type === 'bug' ? 'Bug' : 'Sugestão'}
                           </p>
                           <p style={{ fontSize: 11, color: '#B4B2A9', margin: '2px 0 0' }}>
-                            {fb.profiles?.username ? `@${fb.profiles.username}` : 'visitante'} · {timeAgo(fb.created_at)}
+                            {fb.profile?.username ? `@${fb.profiles.username}` : 'visitante'} · {timeAgo(fb.created_at)}
                           </p>
                         </div>
                       </div>

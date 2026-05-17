@@ -236,7 +236,6 @@ export default function NavbarWrapper({ children }) {
             { href: '/', icon: '⊞', label: t.feed },
             { href: '/forum', icon: '💬', label: t.forum },
             ...(user ? [{ href: '/perfil', icon: '🪴', label: t.myGarden }] : []),
-            { href: '/feedback', icon: '💡', label: 'Feedback' },
           ].map(({ href, icon, label }) => (
             <Link key={href} href={href} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '11px 14px', borderRadius: 12, fontSize: 15, color: '#27500A', fontWeight: 500, transition: 'background 0.15s' }}
               onMouseOver={e => e.currentTarget.style.background = '#EAF3DE'}
@@ -257,6 +256,11 @@ export default function NavbarWrapper({ children }) {
         </nav>
         <div style={{ marginTop: 'auto', display: 'flex', flexDirection: 'column', gap: 12 }}>
           {user && <Notifications user={user} />}
+          <Link href="/feedback" style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', borderRadius: 12, fontSize: 14, color: '#888780', background: 'transparent', border: '0.5px solid #E2F2D4', textDecoration: 'none' }}
+            onMouseOver={e => e.currentTarget.style.background = '#EAF3DE'}
+            onMouseOut={e => e.currentTarget.style.background = 'transparent'}>
+            <span>💡</span> Feedback
+          </Link>
           {user && (
             <button onClick={signOut} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', borderRadius: 12, fontSize: 14, color: '#993C1D', background: 'transparent', border: '0.5px solid #f5c4c4', cursor: 'pointer', width: '100%' }}>
               <span>↩</span> {t.signOut}
@@ -287,12 +291,14 @@ export default function NavbarWrapper({ children }) {
                 { href: '/', icon: '⊞', label: t.feed },
                 { href: '/forum', icon: '💬', label: t.forum },
                 ...(user ? [{ href: '/perfil', icon: '🪴', label: t.myGarden }] : []),
-                { href: '/feedback', icon: '💡', label: 'Feedback' },
               ].map(({ href, icon, label }) => (
                 <Link key={href} href={href} onClick={() => setMenuOpen(false)} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '11px 14px', borderRadius: 12, fontSize: 15, color: '#27500A', fontWeight: 500 }}>
                   <span>{icon}</span>{label}
                 </Link>
               ))}
+              <Link href="/feedback" onClick={() => setMenuOpen(false)} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '11px 14px', borderRadius: 12, fontSize: 15, color: '#888780', fontWeight: 500, textDecoration: 'none' }}>
+                <span>💡</span> Feedback
+              </Link>
               {user && (
                 <button onClick={() => { signOut(); setMenuOpen(false) }} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '11px 14px', borderRadius: 12, fontSize: 14, color: '#993C1D', background: 'transparent', border: '0.5px solid #f5c4c4', cursor: 'pointer', marginTop: 'auto', width: '100%' }}>
                   ↩ {t.signOut}
