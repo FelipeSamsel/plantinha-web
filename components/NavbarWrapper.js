@@ -188,11 +188,26 @@ export default function NavbarWrapper({ children }) {
   const [menuOpen, setMenuOpen] = useState(false)
   const [buscaAberta, setBuscaAberta] = useState(false)
 
+  const [isAdmin, setIsAdmin] = useState(false)
+
   useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => setUser(data.session?.user ?? null))
-    const { data: listener } = supabase.auth.onAuthStateChange((_e, session) => setUser(session?.user ?? null))
+    supabase.auth.getSession().then(({ data }) => {
+      const u = data.session?.user ?? null
+      setUser(u)
+      if (u) checkAdmin(u.id)
+    })
+    const { data: listener } = supabase.auth.onAuthStateChange((_e, session) => {
+      setUser(session?.user ?? null)
+      if (session?.user) checkAdmin(session.user.id)
+      else setIsAdmin(false)
+    })
     return () => listener.subscription.unsubscribe()
   }, [])
+
+  async function checkAdmin(userId) {
+    const { data } = await supabase.from('admins').select('user_id').eq('user_id', userId).maybeSingle()
+    setIsAdmin(!!data)
+  }
 
   async function signOut() {
     await supabase.auth.signOut()
@@ -256,6 +271,11 @@ export default function NavbarWrapper({ children }) {
         </nav>
         <div style={{ marginTop: 'auto', display: 'flex', flexDirection: 'column', gap: 12 }}>
           {user && <Notifications user={user} />}
+          {isAdmin && (
+            <Link href="/dashboard" style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', borderRadius: 12, fontSize: 14, color: '#3B6D11', background: '#EAF3DE', border: '0.5px solid #C5E4A7', textDecoration: 'none', fontWeight: 500 }}>
+              <span>📊</span> Dashboard
+            </Link>
+          )}
           <Link href="/feedback" style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', borderRadius: 12, fontSize: 14, color: '#888780', background: 'transparent', border: '0.5px solid #E2F2D4', textDecoration: 'none' }}
             onMouseOver={e => e.currentTarget.style.background = '#EAF3DE'}
             onMouseOut={e => e.currentTarget.style.background = 'transparent'}>
@@ -296,6 +316,11 @@ export default function NavbarWrapper({ children }) {
                   <span>{icon}</span>{label}
                 </Link>
               ))}
+              {isAdmin && (
+                <Link href="/dashboard" onClick={() => setMenuOpen(false)} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '11px 14px', borderRadius: 12, fontSize: 15, color: '#3B6D11', fontWeight: 600, textDecoration: 'none', background: '#EAF3DE', borderRadius: 12 }}>
+                  <span>📊</span> Dashboard
+                </Link>
+              )}
               <Link href="/feedback" onClick={() => setMenuOpen(false)} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '11px 14px', borderRadius: 12, fontSize: 15, color: '#888780', fontWeight: 500, textDecoration: 'none' }}>
                 <span>💡</span> Feedback
               </Link>
