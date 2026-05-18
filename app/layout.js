@@ -1,5 +1,6 @@
 import './globals.css'
 import NavbarWrapper from '../components/NavbarWrapper'
+import PageViewTracker from '../components/PageViewTracker'
 
 export const metadata = {
   title: 'plantinha',
@@ -11,6 +12,7 @@ export default function RootLayout({ children }) {
     <html lang="pt-BR">
       <body>
         <NavbarWrapper>
+          <PageViewTracker />
           {children}
         </NavbarWrapper>
       </body>

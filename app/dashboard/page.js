@@ -136,6 +136,34 @@ export default function DashboardPage() {
       .order('created_at', { ascending: false })
       .limit(8)
     if (recent) setRecentUsers(recent)
+
+    // visitas
+    const [
+      { count: totalViews },
+      { count: views7d },
+      { count: views24h },
+      { count: uniqueUsers7d },
+    ] = await Promise.all([
+      supabase.from('page_views').select('*', { count: 'exact', head: true }),
+      supabase.from('page_views').select('*', { count: 'exact', head: true }).gte('created_at', d7),
+      supabase.from('page_views').select('*', { count: 'exact', head: true }).gte('created_at', new Date(now - 86400000).toISOString()),
+      supabase.from('page_views').select('user_id', { count: 'exact', head: true }).gte('created_at', d7).not('user_id', 'is', null),
+    ])
+
+    // páginas mais visitadas
+    const { data: topPagesData } = await supabase
+      .from('page_views')
+      .select('path')
+      .gte('created_at', d7)
+
+    const pathCount = {}
+    ;(topPagesData ?? []).forEach(({ path }) => { pathCount[path] = (pathCount[path] ?? 0) + 1 })
+    const topPages = Object.entries(pathCount).sort((a, b) => b[1] - a[1]).slice(0, 5)
+
+    setStats(prev => ({
+      ...prev,
+      totalViews, views7d, views24h, uniqueUsers7d, topPages
+    }))
   }
 
   async function loadAllUsers() {
@@ -391,6 +419,32 @@ export default function DashboardPage() {
               <StatCard icon="♥" label="Curtidas por post" value={stats.avgLikesPerPost} sub="média geral" color="#993C1D" />
               <StatCard icon="💬" label="Comentários por post" value={stats.avgCommentsPerPost} sub="média geral" />
             </div>
+          </Section>
+
+          {/* Visitas */}
+          <Section title="Visitas ao site">
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 12, marginBottom: 16 }}>
+              <StatCard icon="👁️" label="Total de visitas" value={stats.totalViews} />
+              <StatCard icon="📅" label="Visitas (7 dias)" value={stats.views7d} color="#185FA5" />
+              <StatCard icon="⚡" label="Visitas (24h)" value={stats.views24h} color="#854F0B" />
+              <StatCard icon="👤" label="Usuários únicos (7d)" value={stats.uniqueUsers7d} />
+            </div>
+            {stats.topPages?.length > 0 && (
+              <div style={{ background: '#fff', borderRadius: 16, border: '0.5px solid #E2F2D4', overflow: 'hidden' }}>
+                <div style={{ padding: '12px 16px', borderBottom: '0.5px solid #F0F7EC' }}>
+                  <p style={{ fontSize: 12, fontWeight: 600, color: '#B4B2A9', margin: 0, letterSpacing: 0.5, textTransform: 'uppercase' }}>Páginas mais visitadas (7 dias)</p>
+                </div>
+                {stats.topPages.map(([path, count], i) => (
+                  <div key={path} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 16px', borderBottom: i < stats.topPages.length - 1 ? '0.5px solid #F0F7EC' : 'none' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                      <span style={{ fontSize: 12, fontWeight: 600, color: '#B4B2A9', width: 16 }}>{i + 1}</span>
+                      <span style={{ fontSize: 13, color: '#27500A', fontWeight: 500 }}>{path === '/' ? '🏠 Feed' : path}</span>
+                    </div>
+                    <span style={{ fontSize: 13, color: '#3B6D11', fontWeight: 600 }}>{count} visitas</span>
+                  </div>
+                ))}
+              </div>
+            )}
           </Section>
 
           {/* Top usuários */}
